@@ -9,8 +9,12 @@ import { ItemCategory } from './vendor/parser/meta'
 import { ItemRarity } from './vendor/parser/ParsedItem'
 import { parseClipboard, type ParserState } from './vendor/parser/Parser'
 
-const MAX_PREFIXES = 3
-const MAX_SUFFIXES = 3
+/** Numero massimo di prefix (e di suffix) di un raro: 3, i gioielli 2. */
+const DEFAULT_MAX_AFFIXES = 3
+const MAX_AFFIXES: ReadonlyMap<ItemCategory, number> = new Map([[ItemCategory.Jewel, 2]])
+
+/** Errore di EE2 quando la base (o il nome) non è nei dati. */
+const UNKNOWN_ITEM_ERROR = 'item.unknown'
 
 /**
  * Categoria EE2 -> categoria del trade PoE2. Ripresa da EE2
@@ -49,7 +53,6 @@ const TRADE_CATEGORY: ReadonlyMap<ItemCategory, string> = new Map([
   [ItemCategory.TwoHandedMace, 'weapon.twomace'],
   [ItemCategory.OneHandedSword, 'weapon.onesword'],
   [ItemCategory.TwoHandedSword, 'weapon.twosword'],
-  [ItemCategory.Waystone, 'map.waystone'],
   [ItemCategory.Tablet, 'map.tablet']
 ])
 
@@ -85,14 +88,27 @@ export function parseItemText(text: string): ParseResult {
   if (!/^Rarity: /m.test(text)) return { ok: false, reason: 'not_poe_item' }
 
   const parsed = parseClipboard(text)
-  if (parsed.isErr()) return { ok: false, reason: 'not_poe_item' }
+  if (parsed.isErr()) {
+    if (parsed.error !== UNKNOWN_ITEM_ERROR) return { ok: false, reason: 'not_poe_item' }
+    return unknownItemFailure(text)
+  }
   const item = parsed.value as ParserState
 
   if (item.rarity !== ItemRarity.Rare) return { ok: false, reason: 'unsupported_rarity' }
   if (item.isUnidentified) return { ok: false, reason: 'unidentified' }
 
   const itemClass = item.category && TRADE_CATEGORY.get(item.category)
-  if (!itemClass) return { ok: false, reason: 'not_poe_item' }
+  if (!itemClass) return { ok: false, reason: 'unsupported_item' }
+
+  // Con Ctrl+C semplice mancano gli header "{ … }": EE2 non legge i mod explicit, oppure
+  // li legge senza sapere se sono prefix o suffix.
+  const missingGeneration = item.newMods.some(
+    (mod) =>
+      AFFIX_TYPES.has(mod.info.type) &&
+      mod.info.generation !== 'prefix' &&
+      mod.info.generation !== 'suffix'
+  )
+  if (!MOD_HEADER.test(text) || missingGeneration) return { ok: false, reason: 'not_advanced' }
 
   const explicits: ItemMod[] = []
   const implicits: ItemMod[] = []
@@ -116,6 +132,8 @@ export function parseItemText(text: string): ParseResult {
     }
   }
 
+  const maxAffixes = MAX_AFFIXES.get(item.category!) ?? DEFAULT_MAX_AFFIXES
+
   return {
     ok: true,
     item: {
@@ -128,10 +146,21 @@ export function parseItemText(text: string): ParseResult {
       corrupted: item.isCorrupted,
       explicits,
       implicits,
-      openPrefixes: Math.max(0, MAX_PREFIXES - prefixes),
-      openSuffixes: Math.max(0, MAX_SUFFIXES - suffixes)
+      openPrefixes: Math.max(0, maxAffixes - prefixes),
+      openSuffixes: Math.max(0, maxAffixes - suffixes)
     }
   }
+}
+
+/** Header di un mod nel testo avanzato, es. `{ Prefix Modifier "Stalwart" (Tier: 6) — Life }`. */
+const MOD_HEADER = /^\{.*\}$/m
+
+/** EE2 non trova base/nome nei dati: per un raro identificato l'oggetto non è supportato. */
+function unknownItemFailure(text: string): ParseResult {
+  const rarity = /^Rarity: (.*)$/m.exec(text)?.[1]?.trim()
+  if (rarity !== ItemRarity.Rare) return { ok: false, reason: 'unsupported_rarity' }
+  if (/^Unidentified/m.test(text)) return { ok: false, reason: 'unidentified' }
+  return { ok: false, reason: 'unsupported_item' }
 }
 
 /** Un ItemMod per stat; le stat senza id trade per i tipi richiesti vengono scartate. */
@@ -144,7 +173,14 @@ function toItemMods(mod: ParsedModifier, type: ModType, tradeKeys: string[]): It
 
     const source = stat.sourceText ?? stat.translation.string
     const text = stripRanges(source)
-    const itemMod: ItemMod = { statId, text, values: numbersIn(text), type }
+    const itemMod: ItemMod = {
+      statId,
+      text,
+      values: numbersIn(text),
+      // come EE2 (statSourcesTotal): una stat senza numeri conta 1
+      tradeValue: stat.roll?.value ?? 1,
+      type
+    }
     if (mod.info.tier !== undefined) itemMod.tier = mod.info.tier
     if (stat.roll && hasRanges(source)) {
       itemMod.range = { min: stat.roll.min, max: stat.roll.max }

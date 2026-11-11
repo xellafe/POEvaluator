@@ -1,0 +1,15 @@
+Item Class: Jewels
+Rarity: Rare
+Blood Spark
+Ruby
+--------
+Item Level: 79
+--------
+{ Prefix Modifier "Brutal" (Tier: 1) — Damage, Attack }
+14(10-15)% increased Melee Damage
+{ Prefix Modifier "Fierce" (Tier: 1) — Damage, Physical }
+13(10-15)% increased Physical Damage
+{ Suffix Modifier "of Disruption" (Tier: 1) }
+12(10-15)% increased Stun Buildup
+--------
+Place into an allocated Jewel Socket on the Passive Skill Tree. Right click to remove from the Socket.

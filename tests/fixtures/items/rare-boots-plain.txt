@@ -1,0 +1,21 @@
+Item Class: Boots
+Rarity: Rare
+Gale Stride
+Dunerunner Sandals
+--------
+Quality: +10% (augmented)
+Energy Shield: 69 (augmented)
+--------
+Requires: Level 65, 78 Int
+--------
+Sockets: S 
+--------
+Item Level: 81
+--------
++14% to Fire Resistance (rune)
+--------
+25% increased Movement Speed
++74 to maximum Life
++56 to maximum Mana
++24% to Fire Resistance
++19 to Intelligence

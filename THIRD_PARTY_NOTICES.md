@@ -8,15 +8,15 @@
 
 Copied into POEvaluator:
 
-| POEvaluator path                                                                | Upstream path                                                                                                                                        |
-| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/core/parser/vendor/parser/*.ts`                                            | `renderer/src/parser/*.ts` (Parser, ParsedItem, advanced-mod-desc, augment-builder, calc-q20, magic-name, meta, modifiers, stat-translations, utils) |
-| `src/core/parser/vendor/data/index.ts`, `interfaces.ts`                         | `renderer/src/assets/data/index.ts`, `interfaces.ts`                                                                                                 |
-| `src/core/parser/vendor/data/client-strings.en.ts`                              | `renderer/public/data/en/client_strings.js` (typed TS copy)                                                                                          |
-| `data/en/stats.ndjson`, `data/en/items.ndjson`                                  | `renderer/public/data/en/stats.ndjson`, `items.ndjson` (unchanged)                                                                                   |
-| `data/en/client_strings.js`                                                     | `renderer/public/data/en/client_strings.js` (header comment added)                                                                                   |
-| `TRADE_CATEGORY` table in `src/core/parser/parse-item.ts`                       | category table in `renderer/src/web/price-check/trade/pathofexile-trade.ts` (subset)                                                                 |
-| `tests/fixtures/items/{unique,gem,unidentified}.txt`, `rare-ring-corrupted.txt` | item texts from `renderer/specs/Parser/items.ts` (the ring has a `Corrupted` section added)                                                          |
+| POEvaluator path                                                                                                | Upstream path                                                                                                                                        |
+| --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/core/parser/vendor/parser/*.ts`                                                                            | `renderer/src/parser/*.ts` (Parser, ParsedItem, advanced-mod-desc, augment-builder, calc-q20, magic-name, meta, modifiers, stat-translations, utils) |
+| `src/core/parser/vendor/data/index.ts`, `interfaces.ts`                                                         | `renderer/src/assets/data/index.ts`, `interfaces.ts`                                                                                                 |
+| `src/core/parser/vendor/data/client-strings.en.ts`                                                              | `renderer/public/data/en/client_strings.js` (typed TS copy)                                                                                          |
+| `data/en/stats.ndjson`, `data/en/items.ndjson`                                                                  | `renderer/public/data/en/stats.ndjson`, `items.ndjson` (unchanged)                                                                                   |
+| `data/en/client_strings.js`                                                                                     | `renderer/public/data/en/client_strings.js` (header comment added)                                                                                   |
+| `TRADE_CATEGORY` table in `src/core/parser/parse-item.ts`                                                       | category table in `renderer/src/web/price-check/trade/pathofexile-trade.ts` (subset)                                                                 |
+| `tests/fixtures/items/{unique,gem,unidentified,rare-waystone,rare-bow-augments}.txt`, `rare-ring-corrupted.txt` | item texts from `renderer/specs/Parser/items.ts` (the ring has a `Corrupted` section added)                                                          |
 
 Every copied source file starts with a header naming its origin; changes are listed in the
 header and marked with `POEvaluator:` comments.
