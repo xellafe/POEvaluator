@@ -1,0 +1,661 @@
+{
+  "result": [
+    {
+      "id": "da510e97c71fd630341976a90bff2505d5a1e24ac4683e35c45d6a0daabddfac",
+      "listing": {
+        "method": "psapi",
+        "indexed": "2025-02-13T18:59:48Z",
+        "stash": {
+          "name": "~price 1 exalted",
+          "x": 0,
+          "y": 1
+        },
+        "price": {
+          "type": "~price",
+          "amount": 1,
+          "currency": "exalted"
+        },
+        "account": {
+          "name": "Seller1#0000",
+          "online": {
+            "league": "Standard"
+          },
+          "lastCharacterName": "Character1",
+          "language": "en_US",
+          "realm": "poe2"
+        },
+        "whisper": "@Character1 Hi, I would like to buy your Damnation Spur Sandsworn Sandals listed for 1 exalted in Standard (stash tab \"~price 1 exalted\"; position: left 1, top 2)"
+      },
+      "item": {
+        "realm": "poe2",
+        "verified": true,
+        "w": 2,
+        "h": 2,
+        "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQXJtb3Vycy9Cb290cy9CYXNldHlwZXMvQm9vdHNJbnQwNSIsInciOjIsImgiOjIsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/2f27d465e1/BootsInt05.png",
+        "league": "Standard",
+        "id": "da510e97c71fd630341976a90bff2505d5a1e24ac4683e35c45d6a0daabddfac",
+        "sockets": [
+          {
+            "group": 0,
+            "type": "rune"
+          }
+        ],
+        "name": "Damnation Spur",
+        "typeLine": "Sandsworn Sandals",
+        "baseType": "Sandsworn Sandals",
+        "rarity": "Rare",
+        "ilvl": 80,
+        "identified": true,
+        "properties": [
+          {
+            "name": "Boots",
+            "values": [],
+            "displayMode": 0,
+            "type": 109
+          },
+          {
+            "name": "[EnergyShield|Energy Shield]",
+            "values": [
+              [
+                "154",
+                1
+              ]
+            ],
+            "displayMode": 0,
+            "type": 18
+          }
+        ],
+        "requirements": [
+          {
+            "name": "Level",
+            "values": [
+              [
+                "75",
+                0
+              ]
+            ],
+            "displayMode": 0,
+            "type": 62
+          },
+          {
+            "name": "[Intelligence|Int]",
+            "values": [
+              [
+                "101",
+                0
+              ]
+            ],
+            "displayMode": 1,
+            "type": 65
+          }
+        ],
+        "explicitMods": [
+          {
+            "description": "15% increased Movement Speed",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_2250533757",
+            "mods": [
+              {
+                "name": "Sprinter's",
+                "tier": "P5",
+                "level": 16,
+                "magnitudes": [
+                  {
+                    "min": "15",
+                    "max": "15"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "98% increased [EnergyShield|Energy Shield]",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_4015621042",
+            "mods": [
+              {
+                "name": "Unassailable",
+                "tier": "P1",
+                "level": 65,
+                "magnitudes": [
+                  {
+                    "min": "92",
+                    "max": "100"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "+33 to maximum Mana",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_1050105434",
+            "mods": [
+              {
+                "name": "Azure",
+                "tier": "P7",
+                "level": 16,
+                "magnitudes": [
+                  {
+                    "min": "25",
+                    "max": "34"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "+22% to [Resistances|Fire Resistance]",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_3372524247",
+            "mods": [
+              {
+                "name": "of the Kiln",
+                "tier": "S5",
+                "level": 36,
+                "magnitudes": [
+                  {
+                    "min": "21",
+                    "max": "25"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "+36% to [Resistances|Cold Resistance]",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_4220027924",
+            "mods": [
+              {
+                "name": "of the Ice",
+                "tier": "S2",
+                "level": 71,
+                "magnitudes": [
+                  {
+                    "min": "36",
+                    "max": "40"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "52% reduced [Shock|Shock] duration on you",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_99927264",
+            "mods": [
+              {
+                "name": "of the Dielectric",
+                "tier": "S2",
+                "level": 63,
+                "magnitudes": [
+                  {
+                    "min": "51",
+                    "max": "55"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "frameType": 2,
+        "frameTypeId": "Rare",
+        "socketedItems": [],
+        "extended": {
+          "es": 185,
+          "es_aug": true,
+          "hashes": {
+            "explicit": [
+              [
+                "explicit.stat_2250533757",
+                [
+                  2
+                ]
+              ],
+              [
+                "explicit.stat_4015621042",
+                [
+                  3
+                ]
+              ],
+              [
+                "explicit.stat_1050105434",
+                [
+                  0
+                ]
+              ],
+              [
+                "explicit.stat_3372524247",
+                [
+                  1
+                ]
+              ],
+              [
+                "explicit.stat_4220027924",
+                [
+                  5
+                ]
+              ],
+              [
+                "explicit.stat_99927264",
+                [
+                  4
+                ]
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "5e86a23c7482c35aaf0454b68ad2f36cb2b97286f398c7a62af45ac49a918feb",
+      "listing": {
+        "method": "psapi",
+        "indexed": "2024-12-27T00:25:18Z",
+        "stash": {
+          "name": "~price 1 exalted",
+          "x": 2,
+          "y": 4
+        },
+        "price": {
+          "type": "~price",
+          "amount": 1,
+          "currency": "exalted"
+        },
+        "account": {
+          "name": "Seller2#0000",
+          "online": {
+            "league": "Standard"
+          },
+          "lastCharacterName": "Character2",
+          "language": "en_US",
+          "realm": "poe2"
+        },
+        "whisper": "@Character2 Hi, I would like to buy your Rune Road Threaded Shoes listed for 1 exalted in Standard (stash tab \"~price 1 exalted\"; position: left 3, top 5)"
+      },
+      "item": {
+        "realm": "poe2",
+        "verified": true,
+        "w": 2,
+        "h": 2,
+        "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQXJtb3Vycy9Cb290cy9CYXNldHlwZXMvQm9vdHNEZXhJbnQwMiIsInciOjIsImgiOjIsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/2c646ce419/BootsDexInt02.png",
+        "league": "Standard",
+        "id": "5e86a23c7482c35aaf0454b68ad2f36cb2b97286f398c7a62af45ac49a918feb",
+        "name": "Rune Road",
+        "typeLine": "Threaded Shoes",
+        "baseType": "Threaded Shoes",
+        "rarity": "Rare",
+        "ilvl": 35,
+        "identified": true,
+        "properties": [
+          {
+            "name": "Boots",
+            "values": [],
+            "displayMode": 0,
+            "type": 109
+          },
+          {
+            "name": "[Evasion|Evasion Rating]",
+            "values": [
+              [
+                "35",
+                0
+              ]
+            ],
+            "displayMode": 0,
+            "type": 17
+          },
+          {
+            "name": "[EnergyShield|Energy Shield]",
+            "values": [
+              [
+                "15",
+                0
+              ]
+            ],
+            "displayMode": 0,
+            "type": 18
+          }
+        ],
+        "requirements": [
+          {
+            "name": "Level",
+            "values": [
+              [
+                "30",
+                0
+              ]
+            ],
+            "displayMode": 0,
+            "type": 62
+          },
+          {
+            "name": "[Dexterity|Dex]",
+            "values": [
+              [
+                "14",
+                0
+              ]
+            ],
+            "displayMode": 1,
+            "type": 64
+          },
+          {
+            "name": "[Intelligence|Int]",
+            "values": [
+              [
+                "14",
+                0
+              ]
+            ],
+            "displayMode": 1,
+            "type": 65
+          }
+        ],
+        "explicitMods": [
+          {
+            "description": "+84 to maximum Life",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_3299347043",
+            "mods": [
+              {
+                "name": "Robust",
+                "tier": "P4",
+                "level": 38,
+                "magnitudes": [
+                  {
+                    "min": "70",
+                    "max": "84"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "8% increased [ItemRarity|Rarity of Items] found",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_3917489142",
+            "mods": [
+              {
+                "name": "of Plunder",
+                "tier": "S3",
+                "level": 3,
+                "magnitudes": [
+                  {
+                    "min": "6",
+                    "max": "10"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "+10 to [Dexterity|Dexterity]",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_3261801346",
+            "mods": [
+              {
+                "name": "of the Lynx",
+                "tier": "S7",
+                "level": 11,
+                "magnitudes": [
+                  {
+                    "min": "9",
+                    "max": "12"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "+77 to [StunThreshold|Stun Threshold]",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_915769802",
+            "mods": [
+              {
+                "name": "of Steel Skin",
+                "tier": "S7",
+                "level": 29,
+                "magnitudes": [
+                  {
+                    "min": "73",
+                    "max": "97"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "frameType": 2,
+        "frameTypeId": "Rare",
+        "extended": {
+          "ev": 42,
+          "ev_aug": true,
+          "es": 18,
+          "es_aug": true,
+          "hashes": {
+            "explicit": [
+              [
+                "explicit.stat_3299347043",
+                [
+                  1
+                ]
+              ],
+              [
+                "explicit.stat_3917489142",
+                [
+                  0
+                ]
+              ],
+              [
+                "explicit.stat_3261801346",
+                [
+                  3
+                ]
+              ],
+              [
+                "explicit.stat_915769802",
+                [
+                  2
+                ]
+              ]
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "4043005179e1a8cd87eee8727bcc42ee70d5487d06c364752993f15a1e2f699c",
+      "listing": {
+        "method": "psapi",
+        "indexed": "2025-01-13T21:33:45Z",
+        "stash": {
+          "name": "~price 1 exalted",
+          "x": 12,
+          "y": 10
+        },
+        "price": {
+          "type": "~price",
+          "amount": 1,
+          "currency": "exalted"
+        },
+        "account": {
+          "name": "Seller3#0000",
+          "online": {
+            "league": "Standard"
+          },
+          "lastCharacterName": "Character3",
+          "language": "ru_RU",
+          "realm": "poe2"
+        },
+        "whisper": "@Character3 Здравствуйте, хочу купить у вас Энтропический марш Сапоги из змеиной кожи за 1 exalted в лиге Standard (секция \"~price 1 exalted\"; позиция: 13 столбец, 11 ряд)"
+      },
+      "item": {
+        "realm": "poe2",
+        "verified": true,
+        "w": 2,
+        "h": 2,
+        "icon": "https://web.poecdn.com/gen/image/WzI1LDE0LHsiZiI6IjJESXRlbXMvQXJtb3Vycy9Cb290cy9CYXNldHlwZXMvQm9vdHNEZXgwNSIsInciOjIsImgiOjIsInNjYWxlIjoxLCJyZWFsbSI6InBvZTIifV0/316987efab/BootsDex05.png",
+        "league": "Standard",
+        "id": "4043005179e1a8cd87eee8727bcc42ee70d5487d06c364752993f15a1e2f699c",
+        "name": "Entropy March",
+        "typeLine": "Serpentscale Boots",
+        "baseType": "Serpentscale Boots",
+        "rarity": "Rare",
+        "ilvl": 70,
+        "identified": true,
+        "properties": [
+          {
+            "name": "Boots",
+            "values": [],
+            "displayMode": 0,
+            "type": 109
+          },
+          {
+            "name": "[Evasion|Evasion Rating]",
+            "values": [
+              [
+                "265",
+                1
+              ]
+            ],
+            "displayMode": 0,
+            "type": 17
+          }
+        ],
+        "requirements": [
+          {
+            "name": "Level",
+            "values": [
+              [
+                "59",
+                0
+              ]
+            ],
+            "displayMode": 0,
+            "type": 62
+          },
+          {
+            "name": "[Dexterity|Dex]",
+            "values": [
+              [
+                "78",
+                0
+              ]
+            ],
+            "displayMode": 1,
+            "type": 64
+          }
+        ],
+        "explicitMods": [
+          {
+            "description": "10% increased Movement Speed",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_2250533757",
+            "mods": [
+              {
+                "name": "Runner's",
+                "tier": "P6",
+                "magnitudes": [
+                  {
+                    "min": "10",
+                    "max": "10"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "+62 to [Evasion] Rating",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_53045048",
+            "mods": [
+              {
+                "name": "Fleet",
+                "tier": "P4",
+                "level": 25,
+                "magnitudes": [
+                  {
+                    "min": "67",
+                    "max": "87"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "+27% to [Resistances|Cold Resistance]",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_4220027924",
+            "mods": [
+              {
+                "name": "of the Walrus",
+                "tier": "S4",
+                "level": 50,
+                "magnitudes": [
+                  {
+                    "min": "26",
+                    "max": "30"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "description": "+32% to [Resistances|Lightning Resistance]",
+            "domain": "explicit",
+            "hash": "stat.explicit.stat_1671376347",
+            "mods": [
+              {
+                "name": "of the Maelstrom",
+                "tier": "S3",
+                "level": 60,
+                "magnitudes": [
+                  {
+                    "min": "31",
+                    "max": "35"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "frameType": 2,
+        "frameTypeId": "Rare",
+        "extended": {
+          "ev": 318,
+          "ev_aug": true,
+          "hashes": {
+            "explicit": [
+              [
+                "explicit.stat_2250533757",
+                [
+                  3
+                ]
+              ],
+              [
+                "explicit.stat_53045048",
+                [
+                  2
+                ]
+              ],
+              [
+                "explicit.stat_4220027924",
+                [
+                  1
+                ]
+              ],
+              [
+                "explicit.stat_1671376347",
+                [
+                  0
+                ]
+              ]
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

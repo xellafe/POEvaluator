@@ -13,6 +13,11 @@ import { parseClipboard, type ParserState } from './vendor/parser/Parser'
 const DEFAULT_MAX_AFFIXES = 3
 const MAX_AFFIXES: ReadonlyMap<ItemCategory, number> = new Map([[ItemCategory.Jewel, 2]])
 
+/** Max prefix (e suffix) per categoria trade, es. "armour.boots" -> 3, "jewel" -> 2. */
+export function maxAffixes(itemClass: string): number {
+  return itemClass === 'jewel' || itemClass.startsWith('jewel.') ? 2 : DEFAULT_MAX_AFFIXES
+}
+
 /** Errore di EE2 quando la base (o il nome) non è nei dati. */
 const UNKNOWN_ITEM_ERROR = 'item.unknown'
 
@@ -132,7 +137,7 @@ export function parseItemText(text: string): ParseResult {
     }
   }
 
-  const maxAffixes = MAX_AFFIXES.get(item.category!) ?? DEFAULT_MAX_AFFIXES
+  const maxSlots = MAX_AFFIXES.get(item.category!) ?? DEFAULT_MAX_AFFIXES
 
   return {
     ok: true,
@@ -146,8 +151,8 @@ export function parseItemText(text: string): ParseResult {
       corrupted: item.isCorrupted,
       explicits,
       implicits,
-      openPrefixes: Math.max(0, maxAffixes - prefixes),
-      openSuffixes: Math.max(0, maxAffixes - suffixes)
+      openPrefixes: Math.max(0, maxSlots - prefixes),
+      openSuffixes: Math.max(0, maxSlots - suffixes)
     }
   }
 }
