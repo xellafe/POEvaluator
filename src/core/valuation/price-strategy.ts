@@ -1,0 +1,85 @@
+import type { Settings } from '../settings'
+import type { Confidence, Valuation, Verdict } from '../types'
+
+type Result = Pick<Valuation, 'verdict' | 'confidence' | 'price' | 'comparablesCount' | 'warnings'>
+
+/** Percentile con interpolazione lineare (R-7). `sorted` deve essere ordinato crescente e non vuoto. */
+export function percentile(sorted: number[], p: number): number {
+  const h = (sorted.length - 1) * p
+  const lo = Math.floor(h)
+  const hi = Math.ceil(h)
+  return sorted[lo] + (h - lo) * (sorted[hi] - sorted[lo])
+}
+
+/** Valori >= 10 a intero, < 10 a un decimale. */
+export function roundPrice(v: number): number {
+  return v >= 10 ? Math.round(v) : Math.round(v * 10) / 10
+}
+
+/** Scarta valori non validi e (con n >= 4) gli outlier Tukey 1.5×IQR. Restituisce i prezzi ordinati. */
+export function cleanPrices(pricesExalted: number[]): number[] {
+  const sorted = pricesExalted.filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
+  if (sorted.length < 4) return sorted
+  const q1 = percentile(sorted, 0.25)
+  const q3 = percentile(sorted, 0.75)
+  const iqr = q3 - q1
+  const lo = q1 - 1.5 * iqr
+  const hi = q3 + 1.5 * iqr
+  return sorted.filter((v) => v >= lo && v <= hi)
+}
+
+/** alta: n >= 10 e IQR/mediana <= 0.5; media: n >= 4; bassa: altrimenti. */
+export function confidenceFor(prices: number[]): Confidence {
+  const n = prices.length
+  if (n < 4) return 'bassa'
+  if (n >= 10) {
+    const sorted = [...prices].sort((a, b) => a - b)
+    const median = percentile(sorted, 0.5)
+    const iqr = percentile(sorted, 0.75) - percentile(sorted, 0.25)
+    if (median > 0 && iqr / median <= 0.5) return 'alta'
+  }
+  return 'media'
+}
+
+export function verdictFor(estimateExalted: number, t: Settings['thresholds']): Verdict {
+  if (estimateExalted < t.buono) return 'pessimo'
+  if (estimateExalted < t.ottimo) return 'buono'
+  if (estimateExalted < t.vendiSubito) return 'ottimo'
+  return 'vendi_subito'
+}
+
+const SUGGESTED_PERCENTILE: Partial<Record<Verdict, number>> = {
+  buono: 0.2,
+  ottimo: 0.6,
+  vendi_subito: 0.75
+}
+
+export function priceFor(prices: number[], t: Settings['thresholds']): Result {
+  const clean = cleanPrices(prices)
+  if (clean.length < 2) {
+    return {
+      verdict: clean.length === 1 ? verdictFor(clean[0], t) : 'pessimo',
+      confidence: 'bassa',
+      comparablesCount: clean.length,
+      warnings: ['Troppo pochi oggetti simili sul mercato']
+    }
+  }
+  const verdict = verdictFor(percentile(clean, 0.5), t)
+  const warnings: string[] = []
+  if (verdict === 'vendi_subito') warnings.push('Oggetto eccezionale: verifica il prezzo a mano')
+  const result: Result = {
+    verdict,
+    confidence: confidenceFor(clean),
+    comparablesCount: clean.length,
+    warnings
+  }
+  const sp = SUGGESTED_PERCENTILE[verdict]
+  if (sp !== undefined) {
+    result.price = {
+      suggested: roundPrice(percentile(clean, sp)),
+      min: roundPrice(percentile(clean, 0.1)),
+      max: roundPrice(percentile(clean, 0.9))
+    }
+  }
+  return result
+}
