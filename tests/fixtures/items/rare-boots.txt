@@ -1,0 +1,26 @@
+Item Class: Boots
+Rarity: Rare
+Gale Stride
+Dunerunner Sandals
+--------
+Quality: +10% (augmented)
+Energy Shield: 69 (augmented)
+--------
+Requires: Level 65, 78 Int
+--------
+Sockets: S 
+--------
+Item Level: 81
+--------
++14% to Fire Resistance (rune)
+--------
+{ Prefix Modifier "Stallion's" (Tier: 3) — Speed }
+25% increased Movement Speed
+{ Prefix Modifier "Stalwart" (Tier: 6) — Life }
++74(70-84) to maximum Life
+{ Prefix Modifier "Sapphire" (Tier: 7) — Mana }
++56(50-64) to maximum Mana
+{ Suffix Modifier "of the Kiln" (Tier: 4) — Elemental, Fire, Resistance }
++24(21-25)% to Fire Resistance
+{ Suffix Modifier "of the Prodigy" (Tier: 5) — Attribute }
++19(17-20) to Intelligence

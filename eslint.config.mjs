@@ -6,7 +6,8 @@ import eslintPluginReactHooks from 'eslint-plugin-react-hooks'
 import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
 
 export default defineConfig(
-  { ignores: ['**/node_modules', '**/dist', '**/out'] },
+  // Codice vendorizzato da Exiled Exchange 2: stile upstream (virgolette doppie, ;), non riformattato
+  { ignores: ['**/node_modules', '**/dist', '**/out', 'src/core/parser/vendor/**'] },
   tseslint.configs.recommended,
   eslintPluginReact.configs.flat.recommended,
   eslintPluginReact.configs.flat['jsx-runtime'],

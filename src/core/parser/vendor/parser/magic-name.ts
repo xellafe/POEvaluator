@@ -1,0 +1,50 @@
+// Vendored from Exiled Exchange 2 (https://github.com/Kvan7/Exiled-Exchange-2)
+// Source: renderer/src/parser/magic-name.ts @ cca30662bf31eaf38bd711e2ec1a6b899a06c40e - MIT License, see THIRD_PARTY_NOTICES.md
+// POEvaluator changes: import paths rewritten to relative modules / shims only.
+import {
+  ITEM_BY_REF,
+  ITEM_BY_TRANSLATED,
+  TRADE_ITEM_BY_REF,
+} from "../data";
+import { AppConfig } from "../shims/config";
+
+export function magicBasetype(name: string) {
+  let separator = " ";
+  if (AppConfig().language === "cmn-Hant") {
+    separator = /[\u4e00-\u9fa5]/.test(name) ? "" : " ";
+  }
+  const words = name.split(separator);
+
+  const perm: string[] = words.flatMap((_, start) =>
+    Array(words.length - start)
+      .fill(undefined)
+      .map((_, idx) => words.slice(start, start + idx + 1).join(separator)),
+  );
+
+  const result = perm
+    .map((name) => {
+      // BUG[UPSTREAM]: https://www.pathofexile.com/forum/view-thread/3913283
+      const result =
+        ITEM_BY_REF("ITEM", name) ?? ITEM_BY_TRANSLATED("ITEM", name);
+      // TRADE_ITEM_BY_REF({ name }, true);
+      if (result) {
+        return { name, found: result && result[0].craftable, tradeItem: false };
+      }
+      const tradeResult = TRADE_ITEM_BY_REF({ name }, true);
+      return {
+        name,
+        found: tradeResult && tradeResult[0].craftable,
+        tradeItem: true,
+      };
+    })
+    .filter((res) => res.found)
+    .sort(
+      (a, b) =>
+        b.name.length -
+        a.name.length +
+        (b.tradeItem ? 0 : 100_000) -
+        (a.tradeItem ? 0 : 100_000),
+    );
+
+  return result.length ? result[0].name : undefined;
+}
