@@ -1,0 +1,216 @@
+{
+  "core": {
+    "rates": {
+      "exalted": 620.1,
+      "chaos": 10
+    },
+    "primary": "divine",
+    "secondary": "chaos"
+  },
+  "lines": [
+    {
+      "id": "alch",
+      "primaryValue": 0.007845
+    },
+    {
+      "id": "exalted",
+      "primaryValue": 0.001613
+    },
+    {
+      "id": "ancient-infuser",
+      "primaryValue": 0.4463
+    },
+    {
+      "id": "chaos",
+      "primaryValue": 0.1
+    },
+    {
+      "id": "divine",
+      "primaryValue": 1
+    },
+    {
+      "id": "annul",
+      "primaryValue": 0.3929
+    },
+    {
+      "id": "architects-orb",
+      "primaryValue": 12.47
+    },
+    {
+      "id": "artificers",
+      "primaryValue": 0.02157
+    },
+    {
+      "id": "aug",
+      "primaryValue": 0.002805
+    },
+    {
+      "id": "bauble",
+      "primaryValue": 0.0455
+    },
+    {
+      "id": "chance",
+      "primaryValue": 0.02609
+    },
+    {
+      "id": "chance-shard",
+      "primaryValue": 0.05001
+    },
+    {
+      "id": "core-destabiliser",
+      "primaryValue": 1.22
+    },
+    {
+      "id": "crystallised-corruption",
+      "primaryValue": 8.23
+    },
+    {
+      "id": "etcher",
+      "primaryValue": 0.02901
+    },
+    {
+      "id": "fracturing-orb",
+      "primaryValue": 9.71
+    },
+    {
+      "id": "greater-regal-orb",
+      "primaryValue": 0.01138
+    },
+    {
+      "id": "kopecs-orb-of-sacrifice",
+      "primaryValue": 1.1
+    },
+    {
+      "id": "lesser-jewellers-orb",
+      "primaryValue": 0.007522
+    },
+    {
+      "id": "perfect-chaos-orb",
+      "primaryValue": 8.61
+    },
+    {
+      "id": "perfect-exalted-orb",
+      "primaryValue": 2.92
+    },
+    {
+      "id": "perfect-jewellers-orb",
+      "primaryValue": 0.4024
+    },
+    {
+      "id": "perfect-regal-orb",
+      "primaryValue": 0.04632
+    },
+    {
+      "id": "regal",
+      "primaryValue": 0.008347
+    },
+    {
+      "id": "scrap",
+      "primaryValue": 0.02004
+    },
+    {
+      "id": "vaal-arcanists-infuser",
+      "primaryValue": 0.04144
+    },
+    {
+      "id": "vaal-armourers-infuser",
+      "primaryValue": 1.37
+    },
+    {
+      "id": "vaal-blacksmiths-infuser",
+      "primaryValue": 0.1467
+    },
+    {
+      "id": "vaal-cultivation-orb",
+      "primaryValue": 5.33
+    },
+    {
+      "id": "cryptic-key",
+      "primaryValue": 0.2806
+    },
+    {
+      "id": "hinekoras-lock",
+      "primaryValue": 1880
+    },
+    {
+      "id": "artificers-shard",
+      "primaryValue": 0.004838
+    },
+    {
+      "id": "gcp",
+      "primaryValue": 0.0803
+    },
+    {
+      "id": "greater-chaos-orb",
+      "primaryValue": 0.3403
+    },
+    {
+      "id": "greater-exalted-orb",
+      "primaryValue": 0.03748
+    },
+    {
+      "id": "greater-jewellers-orb",
+      "primaryValue": 0.0317
+    },
+    {
+      "id": "greater-orb-of-augmentation",
+      "primaryValue": 0.003289
+    },
+    {
+      "id": "greater-orb-of-transmutation",
+      "primaryValue": 0.002602
+    },
+    {
+      "id": "kamasas-orb-of-sacrifice",
+      "primaryValue": 0.2
+    },
+    {
+      "id": "mirror",
+      "primaryValue": 6450
+    },
+    {
+      "id": "orb-of-extraction",
+      "primaryValue": 1.25
+    },
+    {
+      "id": "perfect-orb-of-augmentation",
+      "primaryValue": 0.5219
+    },
+    {
+      "id": "perfect-orb-of-transmutation",
+      "primaryValue": 0.02054
+    },
+    {
+      "id": "transmute",
+      "primaryValue": 0.004317
+    },
+    {
+      "id": "vaal-catalysing-infuser",
+      "primaryValue": 5.91
+    },
+    {
+      "id": "vaal",
+      "primaryValue": 0.0163
+    },
+    {
+      "id": "vaal-siphoner",
+      "primaryValue": 0.0005507
+    },
+    {
+      "id": "whetstone",
+      "primaryValue": 0.01811
+    },
+    {
+      "id": "wisdom",
+      "primaryValue": 0.00003799
+    },
+    {
+      "id": "yaomacs-orb-of-sacrifice",
+      "primaryValue": 0.03225
+    },
+    {
+      "id": "yuguls-orb-of-sacrifice",
+      "primaryValue": 0.009676
+    }
+  ]
+}
