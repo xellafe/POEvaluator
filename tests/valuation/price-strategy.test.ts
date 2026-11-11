@@ -158,4 +158,15 @@ describe('priceFor', () => {
     // mediana 400; p75 h = 0.75 -> 380 + 0.75·40 = 410
     expect(r.price).toEqual({ suggested: 410, min: 384, max: 416 })
   })
+
+  it('un solo prezzo >= vendiSubito: entrambi i warning, nessun prezzo', () => {
+    const r = priceFor([400], T)
+    expect(r.verdict).toBe('vendi_subito')
+    expect(r.confidence).toBe('bassa')
+    expect(r.price).toBeUndefined()
+    expect(r.warnings).toEqual([
+      'Troppo pochi oggetti simili sul mercato',
+      'Oggetto eccezionale: verifica il prezzo a mano'
+    ])
+  })
 })
