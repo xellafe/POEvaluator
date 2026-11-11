@@ -15,12 +15,12 @@ describe('parseRateLimitHeaders', () => {
   it('legge regole e stati', () => {
     const { rules, state } = parseRateLimitHeaders(headers(BASE))
     expect(rules).toEqual([
-      { maxHits: 8, periodSec: 10, restrictSec: 60 },
-      { maxHits: 15, periodSec: 60, restrictSec: 120 }
+      { group: 'Ip', maxHits: 8, periodSec: 10, restrictSec: 60 },
+      { group: 'Ip', maxHits: 15, periodSec: 60, restrictSec: 120 }
     ])
     expect(state).toEqual([
-      { hits: 1, periodSec: 10, activeRestrictionSec: 0 },
-      { hits: 1, periodSec: 60, activeRestrictionSec: 0 }
+      { group: 'Ip', hits: 1, periodSec: 10, activeRestrictionSec: 0 },
+      { group: 'Ip', hits: 1, periodSec: 60, activeRestrictionSec: 0 }
     ])
   })
 
@@ -33,7 +33,7 @@ describe('parseRateLimitHeaders', () => {
       })
     )
     expect(rules).toHaveLength(2)
-    expect(rules[1]).toEqual({ maxHits: 3, periodSec: 5, restrictSec: 30 })
+    expect(rules[1]).toEqual({ group: 'Account', maxHits: 3, periodSec: 5, restrictSec: 30 })
   })
 
   it('ignora header mancanti o malformati senza lanciare', () => {
@@ -41,7 +41,7 @@ describe('parseRateLimitHeaders', () => {
     const r = parseRateLimitHeaders(
       headers({ 'X-Rate-Limit-Rules': 'Ip', 'X-Rate-Limit-Ip': 'abc,8:10:60' })
     )
-    expect(r.rules).toEqual([{ maxHits: 8, periodSec: 10, restrictSec: 60 }])
+    expect(r.rules).toEqual([{ group: 'Ip', maxHits: 8, periodSec: 10, restrictSec: 60 }])
   })
 })
 
@@ -139,5 +139,36 @@ describe('RateLimiter', () => {
     l.update(headers({ 'X-Rate-Limit-Rules': 'Ip', 'X-Rate-Limit-Ip': 'zzz' }))
     for (let i = 0; i < 4; i++) l.recordRequest()
     expect(l.remainingRatio()).toBeLessThan(1)
+  })
+
+  it('lo stato del server è separato per gruppo anche con lo stesso periodo', () => {
+    const l = new RateLimiter(() => 0)
+    l.update(
+      headers({
+        'X-Rate-Limit-Rules': 'Ip,Account',
+        'X-Rate-Limit-Ip': '8:10:60',
+        'X-Rate-Limit-Ip-State': '1:10:0',
+        'X-Rate-Limit-Account': '3:10:30',
+        'X-Rate-Limit-Account-State': '3:10:0'
+      })
+    )
+    // Account è a 3/3 (tetto 2): blocca anche se Ip è a 1/8
+    expect(l.delayMs()).toBe(10000)
+    expect(l.remainingRatio()).toBe(0)
+  })
+
+  it('l ordine degli header dei gruppi non fa perdere lo stato di Ip', () => {
+    const l = new RateLimiter(() => 0)
+    l.update(
+      headers({
+        'X-Rate-Limit-Rules': 'Ip,Account',
+        'X-Rate-Limit-Ip': '8:10:60',
+        'X-Rate-Limit-Ip-State': '7:10:0',
+        'X-Rate-Limit-Account': '3:10:30',
+        'X-Rate-Limit-Account-State': '1:10:0'
+      })
+    )
+    expect(l.delayMs()).toBe(10000)
+    expect(l.remainingRatio()).toBeCloseTo(1 / 8)
   })
 })

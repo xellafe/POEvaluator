@@ -1,10 +1,12 @@
 export interface RateLimitRule {
+  group: string
   maxHits: number
   periodSec: number
   restrictSec: number
 }
 
 export interface RateLimitState {
+  group: string
   hits: number
   periodSec: number
   activeRestrictionSec: number
@@ -32,12 +34,12 @@ export function parseRateLimitHeaders(h: Headers): {
     .filter(Boolean)
   for (const name of names) {
     for (const [maxHits, periodSec, restrictSec] of parseTriples(h.get(`X-Rate-Limit-${name}`))) {
-      if (maxHits > 0 && periodSec > 0) rules.push({ maxHits, periodSec, restrictSec })
+      if (maxHits > 0 && periodSec > 0) rules.push({ group: name, maxHits, periodSec, restrictSec })
     }
     for (const [hits, periodSec, activeRestrictionSec] of parseTriples(
       h.get(`X-Rate-Limit-${name}-State`)
     )) {
-      state.push({ hits, periodSec, activeRestrictionSec })
+      state.push({ group: name, hits, periodSec, activeRestrictionSec })
     }
   }
   return { rules, state }
@@ -45,8 +47,8 @@ export function parseRateLimitHeaders(h: Headers): {
 
 export class RateLimiter {
   private rules: RateLimitRule[] = []
-  /** Ultimo stato riportato dal server, per periodo, con l'istante di lettura. */
-  private serverHits = new Map<number, { hits: number; at: number }>()
+  /** Ultimo stato riportato dal server, per gruppo e periodo, con l'istante di lettura. */
+  private serverHits = new Map<string, { hits: number; at: number }>()
   private requests: number[] = []
   private blockedUntil = 0
 
@@ -57,7 +59,7 @@ export class RateLimiter {
     const parsed = parseRateLimitHeaders(h)
     if (parsed.rules.length > 0) this.rules = parsed.rules
     for (const s of parsed.state) {
-      this.serverHits.set(s.periodSec, { hits: s.hits, at: t })
+      this.serverHits.set(`${s.group}|${s.periodSec}`, { hits: s.hits, at: t })
       if (s.activeRestrictionSec > 0) {
         this.blockedUntil = Math.max(this.blockedUntil, t + s.activeRestrictionSec * 1000)
       }
@@ -80,7 +82,7 @@ export class RateLimiter {
       const ceiling = Math.max(1, rule.maxHits - 1)
       const periodMs = rule.periodSec * 1000
       const window = this.requests.filter((r) => t - r < periodMs)
-      const server = this.serverHits.get(rule.periodSec)
+      const server = this.serverHits.get(`${rule.group}|${rule.periodSec}`)
       const serverHits = server && t - server.at < periodMs ? server.hits : 0
       const hits = Math.max(window.length, serverHits)
       if (hits < ceiling) continue
@@ -104,7 +106,7 @@ export class RateLimiter {
     for (const rule of this.rules) {
       const periodMs = rule.periodSec * 1000
       const local = this.requests.filter((r) => t - r < periodMs).length
-      const server = this.serverHits.get(rule.periodSec)
+      const server = this.serverHits.get(`${rule.group}|${rule.periodSec}`)
       const serverHits = server && t - server.at < periodMs ? server.hits : 0
       const hits = Math.max(local, serverHits)
       ratio = Math.min(ratio, Math.max(0, (rule.maxHits - hits) / rule.maxHits))
