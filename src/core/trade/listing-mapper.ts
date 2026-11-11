@@ -1,55 +1,10 @@
-import { maxAffixes } from '../parser/parse-item'
+import { maxAffixes, parseTradeLine } from '../parser/parse-item'
 import type { Listing } from '../types'
 
 type Obj = Record<string, unknown>
 
 function isObj(v: unknown): v is Obj {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
-}
-
-/** Nome della prima proprietà dell'item nel trade -> categoria trade (fallback quando il chiamante non la passa). */
-const CLASS_BY_PROPERTY: Record<string, string> = {
-  Boots: 'armour.boots',
-  Gloves: 'armour.gloves',
-  Helmet: 'armour.helmet',
-  'Body Armour': 'armour.chest',
-  Shield: 'armour.shield',
-  Buckler: 'armour.buckler',
-  Focus: 'armour.focus',
-  Quiver: 'armour.quiver'
-}
-
-function inferItemClass(item: Obj): string {
-  const props = Array.isArray(item.properties) ? item.properties : []
-  const name = isObj(props[0]) && typeof props[0].name === 'string' ? props[0].name : ''
-  return CLASS_BY_PROPERTY[name] ?? ''
-}
-
-/** Valore in unità trade dalla riga del mod: numeri mediati, negativo per "reduced"/"less"/"-N". */
-function valueFromDescription(description: string): number | null {
-  const nums = [...description.matchAll(/(-?)(\d+(?:\.\d+)?)/g)]
-  if (nums.length === 0) return null
-  const avg = nums.reduce((s, m) => s + Number(m[2]), 0) / nums.length
-  const negative =
-    nums[0][1] === '-' || /\b(reduced|less|lower|slower|decreased)\b/i.test(description)
-  return negative ? -avg : avg
-}
-
-function magnitudeAverage(entry: Obj): number | null {
-  const mods = Array.isArray(entry.mods) ? entry.mods : []
-  const mags = isObj(mods[0]) && Array.isArray(mods[0].magnitudes) ? mods[0].magnitudes : []
-  const vals = mags
-    .filter(isObj)
-    .map((m) => (Number(m.min) + Number(m.max)) / 2)
-    .filter(Number.isFinite)
-  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
-}
-
-function entryValue(entry: unknown): number {
-  if (!isObj(entry)) return 1
-  const fromText =
-    typeof entry.description === 'string' ? valueFromDescription(entry.description) : null
-  return fromText ?? magnitudeAverage(entry) ?? 1
 }
 
 /**
@@ -76,17 +31,21 @@ function countAffixes(explicitMods: unknown[]): { prefixes: number; suffixes: nu
   return { prefixes, suffixes }
 }
 
+/** Chiavi dell'item trade2 con mod che occupano slot prefix/suffix. */
+const AFFIX_KEYS = ['explicitMods', 'fracturedMods', 'desecratedMods', 'craftedMods']
+
 /**
  * Converte un risultato di `fetch` trade2 in `Listing`. Restituisce null se i dati sono incompleti
- * o se la valuta non è convertibile in exalted. `itemClass` (se noto, es. dalla query) ha la
- * precedenza sulla categoria dedotta dalle proprietà dell'item.
+ * o se la valuta non è convertibile in exalted. `itemClass` è la categoria trade della query.
+ * Richiede `initParserData`: i valori dei mod passano dallo stesso matcher degli item; un mod
+ * non riconosciuto (o con stat diversa dall'hash) viene scartato, mai inventato.
  */
 export function toListing(
   raw: unknown,
   league: string,
   toExalted: (amount: number, currency: string) => number | null,
   now: Date,
-  itemClass?: string
+  itemClass: string
 ): Listing | null {
   if (!isObj(raw) || !isObj(raw.listing) || !isObj(raw.item) || typeof raw.id !== 'string') {
     return null
@@ -100,26 +59,31 @@ export function toListing(
   const priceExalted = toExalted(price.amount, price.currency)
   if (priceExalted === null) return null
 
-  const explicitMods = Array.isArray(item.explicitMods) ? item.explicitMods : []
-  // Nota: gli indici di extended.hashes NON puntano a explicitMods (ordine diverso, verificato sulla
-  // risposta reale): lo statId si legge dal campo `hash` di ogni riga ("stat.explicit.stat_123").
+  const affixMods = AFFIX_KEYS.flatMap((k) =>
+    Array.isArray(item[k]) ? (item[k] as unknown[]) : []
+  )
+
   // Più righe con la stessa stat (es. due righe di vita) si sommano, come fa il trade.
+  // Gli indici di extended.hashes non puntano a questi array: lo statId è nel campo `hash`.
   const byStat = new Map<string, number>()
-  for (const entry of explicitMods) {
-    if (!isObj(entry) || typeof entry.hash !== 'string') continue
+  for (const entry of affixMods) {
+    if (!isObj(entry) || typeof entry.hash !== 'string' || typeof entry.description !== 'string') {
+      continue
+    }
     const statId = entry.hash.replace(/^stat\./, '')
-    byStat.set(statId, (byStat.get(statId) ?? 0) + entryValue(entry))
+    const value = parseTradeLine(entry.description, itemClass, statId)
+    if (value === null) continue
+    byStat.set(statId, (byStat.get(statId) ?? 0) + value)
   }
   const mods = [...byStat].map(([statId, value]) => ({ statId, value }))
 
-  const cls = itemClass ?? inferItemClass(item)
-  const max = maxAffixes(cls)
-  const { prefixes, suffixes } = countAffixes(explicitMods)
+  const max = maxAffixes(itemClass)
+  const { prefixes, suffixes } = countAffixes(affixMods)
 
   return {
     id: raw.id,
     league,
-    itemClass: cls,
+    itemClass,
     baseType: typeof item.baseType === 'string' ? item.baseType : '',
     itemLevel: typeof item.ilvl === 'number' ? item.ilvl : 0,
     mods,

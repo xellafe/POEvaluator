@@ -12,6 +12,7 @@ type Kind = 'search' | 'fetch'
 const BASE = 'https://www.pathofexile.com'
 const FETCH_CHUNK = 10
 const MAX_429_RETRIES = 3
+const REQUEST_TIMEOUT_MS = 20_000
 const PRIORITY_ORDER: Record<Priority, number> = { user: 0, stash: 1, background: 2 }
 
 export function tradeUrl(league: string, queryId: string): string {
@@ -151,7 +152,9 @@ export class TradeClient {
         Accept: 'application/json'
       }
       if (job.init.body !== undefined) headers['Content-Type'] = 'application/json'
-      const res = await this.fetchImpl(job.url, { ...job.init, headers })
+      const res = await this.withTimeout((signal) =>
+        this.fetchImpl(job.url, { ...job.init, headers, signal })
+      )
       limiter.update(res.headers)
       if (res.status === 429) {
         if (attempt >= MAX_429_RETRIES) {
@@ -167,7 +170,24 @@ export class TradeClient {
         const body = (await res.text().catch(() => '')).slice(0, 200)
         throw new Error(`Trade API: HTTP ${res.status} ${body}`.trim())
       }
-      return res.json()
+      return this.withTimeout(() => res.json())
+    }
+  }
+
+  /** Timeout per richiesta (setTimeout, non AbortSignal.timeout, per i fake timer): errore chiaro. */
+  private async withTimeout<T>(op: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort()
+        reject(new Error(`Trade API: timeout dopo ${REQUEST_TIMEOUT_MS / 1000} s`))
+      }, REQUEST_TIMEOUT_MS)
+    })
+    try {
+      return await Promise.race([op(controller.signal), timeout])
+    } finally {
+      clearTimeout(timer)
     }
   }
 }

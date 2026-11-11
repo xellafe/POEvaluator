@@ -8,6 +8,7 @@ import type { ParsedModifier } from './vendor/parser/advanced-mod-desc'
 import { ItemCategory } from './vendor/parser/meta'
 import { ItemRarity } from './vendor/parser/ParsedItem'
 import { parseClipboard, type ParserState } from './vendor/parser/Parser'
+import { tryParseTranslation } from './vendor/parser/stat-translations'
 
 /** Numero massimo di prefix (e di suffix) di un raro: 3, i gioielli 2. */
 const DEFAULT_MAX_AFFIXES = 3
@@ -208,4 +209,36 @@ function hasRanges(line: string): boolean {
 
 function numbersIn(line: string): number[] {
   return (line.match(/[+-]?\d+(?:\.\d+)?/g) ?? []).map(Number)
+}
+
+const CATEGORY_BY_TRADE_CLASS = new Map<string, ItemCategory>(
+  [...TRADE_CATEGORY].map(([category, tradeClass]) => [tradeClass, category])
+)
+
+const TRADE_LINE_TYPES: Record<string, ModifierType> = {
+  explicit: ModifierType.Explicit,
+  fractured: ModifierType.Fractured,
+  desecrated: ModifierType.Desecrated,
+  crafted: ModifierType.Crafted
+}
+
+/**
+ * Valore in unità trade di una riga di mod di un'inserzione (es. "52% reduced Shock duration on
+ * you"), calcolato con lo stesso matcher EE2 usato per gli item (segno e media come `tradeValue`).
+ * `statId` è l'id trade atteso (hash dell'inserzione senza "stat.", es. "explicit.stat_123"):
+ * se il matcher trova un'altra stat o nessuna, restituisce null. Richiede `initParserData`.
+ */
+export function parseTradeLine(line: string, itemClass: string, statId: string): number | null {
+  const modTypeKey = statId.split('.')[0]
+  const modType = TRADE_LINE_TYPES[modTypeKey]
+  if (!modType) return null
+  const clean = line.replace(/\[([^\]|]*)\|([^\]]*)\]/g, '$2').replace(/\[([^\]|]*)\]/g, '$1')
+  const found = tryParseTranslation(
+    { string: clean, unscalable: false },
+    modType,
+    CATEGORY_BY_TRADE_CLASS.get(itemClass)
+  )
+  if (!found || !found.stat.trade.ids[modTypeKey]?.includes(statId)) return null
+  // come EE2: una stat senza numeri conta 1
+  return found.roll?.value ?? 1
 }

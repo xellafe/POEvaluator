@@ -180,6 +180,22 @@ describe('TradeClient', () => {
   })
 })
 
+describe('timeout', () => {
+  it('una richiesta bloccata va in timeout e la coda prosegue', async () => {
+    const f = makeFetch((_c, n) =>
+      n === 1 ? new Promise<Response>(() => {}) : json({ id: 'q', result: ['ok'], total: 1 })
+    )
+    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const p1 = client.search('Standard', {}, 'user')
+    const a1 = expect(p1).rejects.toThrow(/timeout/)
+    const p2 = client.search('Standard', {}, 'user')
+    await vi.advanceTimersByTimeAsync(20_000)
+    await a1
+    expect((await p2).result).toEqual(['ok'])
+    expect(f.calls).toHaveLength(2)
+  })
+})
+
 describe('tradeUrl', () => {
   it('costruisce il link alla pagina di ricerca', () => {
     expect(tradeUrl('Rise of the Abyssal', 'abc')).toBe(
