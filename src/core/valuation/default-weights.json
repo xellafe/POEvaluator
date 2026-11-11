@@ -1,0 +1,288 @@
+{
+  "_comment": "Pesi scritti a mano (M1) per classe trade -> id stat trade -> peso 0..1. Servono al valutatore rapido quando i listing locali sono pochi (fallback), come pesi della distanza kNN (stat assenti = 0.1), per ordinare i mod nell'analisi approfondita e come semi della raccolta in background. Sono indicativi: valgono solo i mod explicit, id = trade.ids.explicit[0] di data/en/stats.ndjson (lo stesso scelto dal parser). Le chiavi che iniziano con '_' vengono ignorate.",
+  "armour.boots": {
+    "explicit.stat_2250533757": 1.0,
+    "explicit.stat_3299347043": 0.8,
+    "explicit.stat_3372524247": 0.5,
+    "explicit.stat_4220027924": 0.5,
+    "explicit.stat_1671376347": 0.5,
+    "explicit.stat_2923486259": 0.4,
+    "explicit.stat_3261801346": 0.2
+  },
+  "armour.gloves": {
+    "explicit.stat_3299347043": 0.8,
+    "explicit.stat_210067635": 0.7,
+    "explicit.stat_3032590688": 0.6,
+    "explicit.stat_3372524247": 0.5,
+    "explicit.stat_4220027924": 0.5,
+    "explicit.stat_1671376347": 0.5,
+    "explicit.stat_2923486259": 0.4,
+    "explicit.stat_3917489142": 0.3
+  },
+  "armour.helmet": {
+    "explicit.stat_3299347043": 0.8,
+    "explicit.stat_3372524247": 0.5,
+    "explicit.stat_4220027924": 0.5,
+    "explicit.stat_1671376347": 0.5,
+    "explicit.stat_2923486259": 0.4,
+    "explicit.stat_3489782002": 0.4,
+    "explicit.stat_3917489142": 0.3,
+    "explicit.stat_1050105434": 0.2
+  },
+  "armour.chest": {
+    "explicit.stat_3299347043": 0.9,
+    "explicit.stat_2704225257": 0.7,
+    "explicit.stat_3372524247": 0.5,
+    "explicit.stat_4220027924": 0.5,
+    "explicit.stat_1671376347": 0.5,
+    "explicit.stat_2923486259": 0.4,
+    "explicit.stat_3489782002": 0.4
+  },
+  "armour.shield": {
+    "explicit.stat_3299347043": 0.8,
+    "explicit.stat_3372524247": 0.5,
+    "explicit.stat_4220027924": 0.5,
+    "explicit.stat_1671376347": 0.5,
+    "explicit.stat_2923486259": 0.4,
+    "explicit.stat_2481353198": 0.4,
+    "explicit.stat_4080418644": 0.2
+  },
+  "armour.buckler": {
+    "explicit.stat_3299347043": 0.8,
+    "explicit.stat_3372524247": 0.5,
+    "explicit.stat_4220027924": 0.5,
+    "explicit.stat_1671376347": 0.5,
+    "explicit.stat_2923486259": 0.4,
+    "explicit.stat_2481353198": 0.4,
+    "explicit.stat_3261801346": 0.2
+  },
+  "armour.focus": {
+    "explicit.stat_124131830": 1.0,
+    "explicit.stat_2974417149": 0.7,
+    "explicit.stat_2891184298": 0.7,
+    "explicit.stat_3489782002": 0.5,
+    "explicit.stat_737908626": 0.4,
+    "explicit.stat_274716455": 0.4,
+    "explicit.stat_1050105434": 0.3
+  },
+  "armour.quiver": {
+    "explicit.stat_1202301673": 1.0,
+    "explicit.stat_210067635": 0.6,
+    "explicit.stat_587431675": 0.5,
+    "explicit.stat_3556824919": 0.5,
+    "explicit.stat_3032590688": 0.5,
+    "explicit.stat_3299347043": 0.5,
+    "explicit.stat_3759663284": 0.3
+  },
+  "accessory.belt": {
+    "explicit.stat_3299347043": 0.8,
+    "explicit.stat_3372524247": 0.5,
+    "explicit.stat_4220027924": 0.5,
+    "explicit.stat_1671376347": 0.5,
+    "explicit.stat_2923486259": 0.4,
+    "explicit.stat_4080418644": 0.3,
+    "explicit.stat_1050105434": 0.2
+  },
+  "accessory.ring": {
+    "explicit.stat_2901986750": 0.7,
+    "explicit.stat_3299347043": 0.6,
+    "explicit.stat_3372524247": 0.5,
+    "explicit.stat_4220027924": 0.5,
+    "explicit.stat_1671376347": 0.5,
+    "explicit.stat_3917489142": 0.5,
+    "explicit.stat_2923486259": 0.4,
+    "explicit.stat_210067635": 0.4,
+    "explicit.stat_2891184298": 0.4
+  },
+  "accessory.amulet": {
+    "explicit.stat_2704225257": 0.8,
+    "explicit.stat_3299347043": 0.7,
+    "explicit.stat_2901986750": 0.6,
+    "explicit.stat_3556824919": 0.5,
+    "explicit.stat_3917489142": 0.5,
+    "explicit.stat_1379411836": 0.4,
+    "explicit.stat_3372524247": 0.4,
+    "explicit.stat_4220027924": 0.4,
+    "explicit.stat_1671376347": 0.4
+  },
+  "weapon.bow": {
+    "explicit.stat_1509134228": 1.0,
+    "explicit.stat_1940865751": 0.9,
+    "explicit.stat_1202301673": 0.9,
+    "explicit.stat_210067635": 0.7,
+    "explicit.stat_518292764": 0.6,
+    "explicit.stat_709508406": 0.5,
+    "explicit.stat_1037193709": 0.5,
+    "explicit.stat_3336890334": 0.5,
+    "explicit.stat_3556824919": 0.4
+  },
+  "weapon.crossbow": {
+    "explicit.stat_1509134228": 1.0,
+    "explicit.stat_1940865751": 0.9,
+    "explicit.stat_1202301673": 0.9,
+    "explicit.stat_210067635": 0.7,
+    "explicit.stat_518292764": 0.6,
+    "explicit.stat_709508406": 0.5,
+    "explicit.stat_1037193709": 0.5,
+    "explicit.stat_3336890334": 0.5,
+    "explicit.stat_3556824919": 0.4
+  },
+  "weapon.spear": {
+    "explicit.stat_1509134228": 1.0,
+    "explicit.stat_1940865751": 0.9,
+    "explicit.stat_1202301673": 0.8,
+    "explicit.stat_9187492": 0.8,
+    "explicit.stat_210067635": 0.7,
+    "explicit.stat_518292764": 0.6,
+    "explicit.stat_709508406": 0.5,
+    "explicit.stat_1037193709": 0.5,
+    "explicit.stat_3336890334": 0.5
+  },
+  "weapon.oneaxe": {
+    "explicit.stat_1509134228": 1.0,
+    "explicit.stat_1940865751": 0.9,
+    "explicit.stat_9187492": 0.9,
+    "explicit.stat_210067635": 0.7,
+    "explicit.stat_518292764": 0.6,
+    "explicit.stat_709508406": 0.5,
+    "explicit.stat_1037193709": 0.5,
+    "explicit.stat_3336890334": 0.5,
+    "explicit.stat_3556824919": 0.4
+  },
+  "weapon.twoaxe": {
+    "explicit.stat_1509134228": 1.0,
+    "explicit.stat_1940865751": 0.9,
+    "explicit.stat_9187492": 0.9,
+    "explicit.stat_210067635": 0.7,
+    "explicit.stat_518292764": 0.6,
+    "explicit.stat_709508406": 0.5,
+    "explicit.stat_1037193709": 0.5,
+    "explicit.stat_3336890334": 0.5,
+    "explicit.stat_3556824919": 0.4
+  },
+  "weapon.onemace": {
+    "explicit.stat_1509134228": 1.0,
+    "explicit.stat_1940865751": 0.9,
+    "explicit.stat_9187492": 0.9,
+    "explicit.stat_210067635": 0.7,
+    "explicit.stat_518292764": 0.6,
+    "explicit.stat_709508406": 0.5,
+    "explicit.stat_1037193709": 0.5,
+    "explicit.stat_3336890334": 0.5,
+    "explicit.stat_3556824919": 0.4
+  },
+  "weapon.twomace": {
+    "explicit.stat_1509134228": 1.0,
+    "explicit.stat_1940865751": 0.9,
+    "explicit.stat_9187492": 0.9,
+    "explicit.stat_210067635": 0.7,
+    "explicit.stat_518292764": 0.6,
+    "explicit.stat_709508406": 0.5,
+    "explicit.stat_1037193709": 0.5,
+    "explicit.stat_3336890334": 0.5,
+    "explicit.stat_3556824919": 0.4
+  },
+  "weapon.onesword": {
+    "explicit.stat_1509134228": 1.0,
+    "explicit.stat_1940865751": 0.9,
+    "explicit.stat_9187492": 0.9,
+    "explicit.stat_210067635": 0.7,
+    "explicit.stat_518292764": 0.6,
+    "explicit.stat_709508406": 0.5,
+    "explicit.stat_1037193709": 0.5,
+    "explicit.stat_3336890334": 0.5,
+    "explicit.stat_3556824919": 0.4
+  },
+  "weapon.twosword": {
+    "explicit.stat_1509134228": 1.0,
+    "explicit.stat_1940865751": 0.9,
+    "explicit.stat_9187492": 0.9,
+    "explicit.stat_210067635": 0.7,
+    "explicit.stat_518292764": 0.6,
+    "explicit.stat_709508406": 0.5,
+    "explicit.stat_1037193709": 0.5,
+    "explicit.stat_3336890334": 0.5,
+    "explicit.stat_3556824919": 0.4
+  },
+  "weapon.dagger": {
+    "explicit.stat_1509134228": 1.0,
+    "explicit.stat_1940865751": 0.9,
+    "explicit.stat_9187492": 0.8,
+    "explicit.stat_210067635": 0.7,
+    "explicit.stat_518292764": 0.7,
+    "explicit.stat_3556824919": 0.5,
+    "explicit.stat_709508406": 0.5,
+    "explicit.stat_1037193709": 0.5,
+    "explicit.stat_3336890334": 0.5
+  },
+  "weapon.claw": {
+    "explicit.stat_1509134228": 1.0,
+    "explicit.stat_1940865751": 0.9,
+    "explicit.stat_9187492": 0.8,
+    "explicit.stat_210067635": 0.7,
+    "explicit.stat_518292764": 0.7,
+    "explicit.stat_3556824919": 0.5,
+    "explicit.stat_709508406": 0.5,
+    "explicit.stat_1037193709": 0.5,
+    "explicit.stat_3336890334": 0.5
+  },
+  "weapon.flail": {
+    "explicit.stat_1509134228": 1.0,
+    "explicit.stat_1940865751": 0.9,
+    "explicit.stat_9187492": 0.9,
+    "explicit.stat_210067635": 0.7,
+    "explicit.stat_518292764": 0.6,
+    "explicit.stat_709508406": 0.5,
+    "explicit.stat_1037193709": 0.5,
+    "explicit.stat_3336890334": 0.5,
+    "explicit.stat_3556824919": 0.4
+  },
+  "weapon.warstaff": {
+    "explicit.stat_1509134228": 1.0,
+    "explicit.stat_1940865751": 0.9,
+    "explicit.stat_9187492": 0.9,
+    "explicit.stat_210067635": 0.7,
+    "explicit.stat_518292764": 0.6,
+    "explicit.stat_709508406": 0.5,
+    "explicit.stat_1037193709": 0.5,
+    "explicit.stat_3336890334": 0.5,
+    "explicit.stat_3556824919": 0.4
+  },
+  "weapon.talisman": {
+    "explicit.stat_1509134228": 1.0,
+    "explicit.stat_1940865751": 0.9,
+    "explicit.stat_9187492": 0.8,
+    "explicit.stat_210067635": 0.7,
+    "explicit.stat_518292764": 0.6,
+    "explicit.stat_709508406": 0.5,
+    "explicit.stat_1037193709": 0.5,
+    "explicit.stat_3336890334": 0.5,
+    "explicit.stat_3556824919": 0.4
+  },
+  "weapon.wand": {
+    "explicit.stat_124131830": 1.0,
+    "explicit.stat_2974417149": 0.8,
+    "explicit.stat_2891184298": 0.7,
+    "explicit.stat_737908626": 0.5,
+    "explicit.stat_274716455": 0.4,
+    "explicit.stat_1050105434": 0.3,
+    "explicit.stat_328541901": 0.2
+  },
+  "weapon.staff": {
+    "explicit.stat_124131830": 1.0,
+    "explicit.stat_2974417149": 0.8,
+    "explicit.stat_2891184298": 0.7,
+    "explicit.stat_737908626": 0.5,
+    "explicit.stat_274716455": 0.4,
+    "explicit.stat_1050105434": 0.3,
+    "explicit.stat_328541901": 0.2
+  },
+  "weapon.sceptre": {
+    "explicit.stat_2704225257": 1.0,
+    "explicit.stat_2162097452": 0.8,
+    "explicit.stat_1416406066": 0.7,
+    "explicit.stat_2901986750": 0.4,
+    "explicit.stat_1050105434": 0.3,
+    "explicit.stat_1379411836": 0.3
+  }
+}
