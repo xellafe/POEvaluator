@@ -112,6 +112,24 @@ describe('TradeClient', () => {
     expect(res.result).toEqual(['x'])
   })
 
+  it('ogni 429 viene segnalato a onRateLimited con endpoint e tentativo', async () => {
+    const f = makeFetch((_c, n) =>
+      n === 1
+        ? json({ error: 'rate' }, 429, { 'Retry-After': '1' })
+        : json({ id: 'q', result: [], total: 0 })
+    )
+    const seen: string[] = []
+    const client = new TradeClient({
+      userAgent: UA,
+      fetchImpl: f.impl,
+      onRateLimited: (kind, attempt) => seen.push(`${kind}:${attempt}`)
+    })
+    const p = client.search('Standard', {}, 'user')
+    await vi.advanceTimersByTimeAsync(1000)
+    await p
+    expect(seen).toEqual(['search:1'])
+  })
+
   it('dopo 3 ripetizioni su 429 rifiuta con un errore chiaro', async () => {
     const f = makeFetch(() => json({}, 429, { 'Retry-After': '1' }))
     const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })

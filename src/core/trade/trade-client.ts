@@ -43,12 +43,16 @@ export class TradeClient {
   private inFlight: Job | null = null
   private pumping = false
   private seq = 0
+  private readonly onRateLimited?: (kind: Kind, attempt: number) => void
 
   constructor(opts: {
     userAgent: string
     fetchImpl?: typeof fetch
     limiters?: { search?: RateLimiter; fetch?: RateLimiter }
+    /** Chiamato a ogni risposta 429 (diagnostica: in condizioni normali non deve accadere). */
+    onRateLimited?: (kind: Kind, attempt: number) => void
   }) {
+    this.onRateLimited = opts.onRateLimited
     this.userAgent = opts.userAgent
     this.fetchImpl = opts.fetchImpl ?? ((input, init) => globalThis.fetch(input, init))
     this.limiters = {
@@ -157,6 +161,7 @@ export class TradeClient {
       )
       limiter.update(res.headers)
       if (res.status === 429) {
+        this.onRateLimited?.(job.kind, attempt + 1)
         if (attempt >= MAX_429_RETRIES) {
           throw new Error(
             `Trade API: troppe risposte 429 (rate limit) dopo ${attempt + 1} tentativi`

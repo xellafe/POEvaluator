@@ -40,6 +40,7 @@ let settingsPath: string
 let store: ListingStore | null = null
 let service: EvaluatorService | null = null
 let collector: BackgroundCollector | null = null
+let statsTimer: ReturnType<typeof setInterval> | null = null
 let hotkeys: { quick: Hotkey | null; deep: Hotkey | null } = { quick: null, deep: null }
 let lastItemText = ''
 const gate = new RequestGate()
@@ -188,7 +189,10 @@ async function startServices(): Promise<void> {
   log(`database aperto: ${dbPath}`)
 
   const userAgent = `POEvaluator/${app.getVersion()} (+https://github.com/xellafe/POEvaluator)`
-  const client = new TradeClient({ userAgent })
+  const client = new TradeClient({
+    userAgent,
+    onRateLimited: (kind, attempt) => log(`429 dal trade (${kind}, tentativo ${attempt})`)
+  })
   service = new EvaluatorService({
     client,
     store,
@@ -209,6 +213,10 @@ async function startServices(): Promise<void> {
     log
   })
   collector.start()
+  // Diagnostica per la verifica M1: inserzioni raccolte per categoria, ogni 5 minuti.
+  statsTimer = setInterval(() => {
+    if (store) log(`inserzioni in archivio: ${JSON.stringify(store.countByClass(settings.league))}`)
+  }, 5 * 60_000)
 
   registerHotkeys()
   uIOhook.on('keydown', onKeydown)
@@ -223,6 +231,7 @@ function shutdown(): void {
     log(`arresto hook: ${errMsg(e)}`)
   }
   collector?.stop()
+  if (statsTimer) clearInterval(statsTimer)
   service?.stop()
   store?.close()
   store = null
