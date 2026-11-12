@@ -206,6 +206,7 @@ const fakeApi: PoeApi = {
   setInteractive: () => {},
   getSettings: async () => DEFAULT_SETTINGS,
   getLeagues: async () => ['Runes of Aldur', 'HC Runes of Aldur', 'Standard', 'Hardcore'],
+  onLeagues: () => () => {},
   setSettings: async () => DEFAULT_SETTINGS
 }
 

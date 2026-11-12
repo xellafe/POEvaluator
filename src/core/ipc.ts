@@ -67,6 +67,8 @@ export const IPC = {
   setSettings: 'settings:set',
   /** renderer -> main: league PoE2 disponibili sul trade */
   leagues: 'settings:leagues',
+  /** main -> impostazioni: elenco delle league aggiornato dal trade */
+  leaguesUpdated: 'settings:leagues-updated',
   /** main -> overlay: chiudi badge e pannello (Esc in gioco) */
   dismiss: 'overlay:dismiss',
   /** overlay -> main: il mouse è sopra un elemento cliccabile (badge o pannello) */
@@ -87,6 +89,11 @@ export interface PoeApi {
   setInteractive(on: boolean): void
   getSettings(): Promise<Settings>
   setSettings(patch: SettingsPatch): Promise<Settings>
-  /** League PoE2 attive sul trade; lista vuota se non è stato possibile scaricarle. */
+  /**
+   * League PoE2 attive sul trade, dall'ultimo elenco salvato (subito); lista vuota se non è mai
+   * stato possibile scaricarle. Un elenco più recente arriva con `onLeagues`.
+   */
   getLeagues(): Promise<string[]>
+  /** Elenco delle league aggiornato in background (dopo `getLeagues`). */
+  onLeagues(cb: (ids: string[]) => void): () => void
 }

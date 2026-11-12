@@ -102,6 +102,13 @@ export class Overlay {
 let settingsWindow: BrowserWindow | null = null
 
 /** Finestra impostazioni: normale (prende il focus), senza cornice di sistema come nel mockup. */
+/** Invia un messaggio alla finestra impostazioni, se è aperta. */
+export function sendToSettings(channel: string, payload: unknown): void {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.send(channel, payload)
+  }
+}
+
 export function openSettingsWindow(icon: string, log: Log): void {
   if (settingsWindow) {
     if (settingsWindow.isMinimized()) settingsWindow.restore()

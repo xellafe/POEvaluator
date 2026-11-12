@@ -118,6 +118,8 @@ export function SettingsWindow(): JSX.Element {
   useEffect(() => {
     void window.poe.getSettings().then((s) => setForm(toForm(s)))
     window.poe.getLeagues().then(setLeagues, () => setLeagues([]))
+    // elenco aggiornato dal trade in background mentre la finestra è aperta
+    return window.poe.onLeagues(setLeagues)
   }, [])
 
   if (!form) return <div className="window fill" />

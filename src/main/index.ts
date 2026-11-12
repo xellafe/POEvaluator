@@ -22,7 +22,8 @@ import { DEFAULT_MAX_SEARCHES } from '../core/valuation/deep-analysis'
 import { copyHoveredItem } from './capture'
 import { EvaluatorService, type EvalResult } from './evaluator-service'
 import { KeyRepeatFilter, matchesHotkey, parseHotkey, type Hotkey } from './input'
-import { createTray, openSettingsWindow, Overlay } from './overlay'
+import { LeagueCache } from './league-cache'
+import { createTray, openSettingsWindow, Overlay, sendToSettings } from './overlay'
 import { DEEP_BUSY_MESSAGE, RequestGate } from './request-gate'
 import { applyPatch, loadSettings, saveSettings, settingsError } from './settings-file'
 
@@ -40,9 +41,8 @@ let settingsPath: string
 let store: ListingStore | null = null
 let service: EvaluatorService | null = null
 let collector: BackgroundCollector | null = null
-let tradeClient: TradeClient | null = null
-/** League scaricate dal trade, tenute per 10 minuti (la finestra impostazioni le chiede a ogni apertura). */
-let leaguesCache: { at: number; ids: string[] } | null = null
+/** League salvate in userData/leagues.json, aggiornate dal trade ogni 24 ore. */
+let leagueCache: LeagueCache | null = null
 let statsTimer: ReturnType<typeof setInterval> | null = null
 let hotkeys: { quick: Hotkey | null; deep: Hotkey | null } = { quick: null, deep: null }
 let lastItemText = ''
@@ -203,19 +203,8 @@ function registerIpc(): void {
     if (prev.league !== settings.league) void service?.reloadRates()
     return settings
   })
-  ipcMain.handle(IPC.leagues, async () => {
-    if (leaguesCache && Date.now() - leaguesCache.at < 10 * 60_000) return leaguesCache.ids
-    if (!tradeClient) return []
-    try {
-      const ids = await tradeClient.leagues('user')
-      leaguesCache = { at: Date.now(), ids }
-      log(`league disponibili: ${ids.join(', ')}`)
-      return ids
-    } catch (e) {
-      log(`league non scaricate: ${errMsg(e)}`)
-      return []
-    }
-  })
+  // Subito l'elenco salvato; se vecchio o assente si aggiorna in background (onLeagues).
+  ipcMain.handle(IPC.leagues, () => leagueCache?.list() ?? [])
   // Click sul badge: analisi approfondita dell'ultimo oggetto catturato.
   ipcMain.on(IPC.deep, () => {
     const text = lastItemText
@@ -241,10 +230,19 @@ async function startServices(): Promise<void> {
   log(`database aperto: ${dbPath}`)
 
   const userAgent = `POEvaluator/${app.getVersion()} (+https://github.com/xellafe/POEvaluator)`
-  const client = (tradeClient = new TradeClient({
+  const client = new TradeClient({
     userAgent,
     onRateLimited: (kind, attempt) => log(`429 dal trade (${kind}, tentativo ${attempt})`)
-  }))
+  })
+  leagueCache = new LeagueCache({
+    path: join(userData, 'leagues.json'),
+    fetchLeagues: (priority) => client.leagues(priority),
+    now: () => Date.now(),
+    onUpdate: (ids) => sendToSettings(IPC.leaguesUpdated, ids),
+    log
+  })
+  void leagueCache.refreshIfStale('background')
+
   service = new EvaluatorService({
     client,
     store,

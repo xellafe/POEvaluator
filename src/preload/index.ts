@@ -28,7 +28,8 @@ const poe: PoeApi = {
   setInteractive: (on) => ipcRenderer.send(IPC.interactive, on === true),
   getSettings: () => ipcRenderer.invoke(IPC.getSettings),
   setSettings: (patch) => ipcRenderer.invoke(IPC.setSettings, patch),
-  getLeagues: () => ipcRenderer.invoke(IPC.leagues)
+  getLeagues: () => ipcRenderer.invoke(IPC.leagues),
+  onLeagues: (cb) => subscribe<string[]>(IPC.leaguesUpdated, cb)
 }
 
 // Preload sandboxed: espone solo `window.poe` (nessun ipcRenderer generico né `process`).
