@@ -62,6 +62,19 @@ export function abortError(): Error {
 
 export const isAbortError = (e: unknown): boolean => e instanceof Error && e.name === 'AbortError'
 
+/**
+ * Errore di una richiesta background rifiutata perché il trade è bloccato (429 o restrizione):
+ * la raccolta in background non ripete, salta il giro.
+ */
+export function tradePausedError(): Error {
+  const e = new Error('Trade in pausa: richiesta in background non eseguita')
+  e.name = 'TradePausedError'
+  return e
+}
+
+export const isTradePausedError = (e: unknown): boolean =>
+  e instanceof Error && e.name === 'TradePausedError'
+
 /** Attesa minima dopo un 429 senza Retry-After (il limiter da solo potrebbe non bloccare). */
 const MIN_429_WAIT_MS = 1000
 
@@ -75,7 +88,9 @@ const byPriority = (a: Job, b: Job): number =>
  * più importante, così un job in attesa su un endpoint non blocca quelli diretti a un endpoint
  * libero. Un blocco del server (Retry-After, restrizione attiva, 429) su qualunque endpoint ferma
  * invece tutta la coda: la restrizione di GGG vale per IP e le richieste fatte durante la
- * restrizione la allungano. Le richieste background usano al massimo metà di ogni regola.
+ * restrizione la allungano. Le richieste background usano al massimo metà di ogni regola; durante
+ * un blocco non vengono ripetute né accodate (TradePausedError), così la pausa della raccolta
+ * dopo un blocco non viene aggirata da job già avviati.
  */
 export class TradeClient {
   private readonly userAgent: string
@@ -219,6 +234,10 @@ export class TradeClient {
         reject(abortError())
         return
       }
+      if (priority === 'background' && this.blockedForMs() > 0) {
+        reject(tradePausedError())
+        return
+      }
       const onAbort = (): void => {
         const i = this.queue.indexOf(job)
         if (i < 0) return // in volo: il risultato verrà scartato in pump()
@@ -335,13 +354,17 @@ export class TradeClient {
       const attempt = job.attempts++
       // senza Retry-After né restrizione nello stato: attesa minima di sicurezza, per tutta la coda
       if (this.blockedForMs() === 0) limiter.blockFor(MIN_429_WAIT_MS)
+      this.rejectQueuedBackground()
       this.onResponse?.()
       this.onRateLimited?.(job.kind, attempt + 1, describeRateLimitHeaders(res.headers))
+      // un job background non si ripete: la raccolta riprende da sola dopo la sua pausa
+      if (job.priority === 'background') throw tradePausedError()
       if (attempt >= MAX_429_RETRIES) {
         throw new Error(`Trade API: troppe risposte 429 (rate limit) dopo ${attempt + 1} tentativi`)
       }
       return { retry: true }
     }
+    this.rejectQueuedBackground()
     this.onResponse?.()
     if (hasActiveRestriction(res.headers)) {
       this.onRestriction?.(job.kind, describeRateLimitHeaders(res.headers))
@@ -351,6 +374,15 @@ export class TradeClient {
       throw new Error(`Trade API: HTTP ${res.status} ${body}`.trim())
     }
     return { retry: false, value: await this.withTimeout(() => res.json()) }
+  }
+
+  /** Durante un blocco globale i job background in coda vengono tolti e rifiutati. */
+  private rejectQueuedBackground(): void {
+    if (this.blockedForMs() === 0) return
+    const dropped = this.queue.filter((j) => j.priority === 'background')
+    if (dropped.length === 0) return
+    this.queue = this.queue.filter((j) => j.priority !== 'background')
+    for (const j of dropped) j.reject(tradePausedError())
   }
 
   /** Timeout per richiesta (setTimeout, non AbortSignal.timeout, per i fake timer): errore chiaro. */

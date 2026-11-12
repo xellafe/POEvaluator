@@ -9,10 +9,12 @@ import {
   MAX_REQUESTED_CLASSES,
   MIN_RATIO,
   MIN_SEARCH_INTERVAL_MS,
+  SEARCH_INTERVAL_TOLERANCE_MS,
   RESTRICTION_COOLDOWN_MS,
   STARTUP_DELAY_MS
 } from '../../src/core/collector/background-collector'
 import { ListingStore } from '../../src/core/db/listing-store'
+import { tradePausedError } from '../../src/core/trade/trade-client'
 import { initParserData } from '../../src/core/parser/parse-item'
 import { DEFAULT_SETTINGS, type Settings } from '../../src/core/settings'
 import type { Listing } from '../../src/core/types'
@@ -192,19 +194,49 @@ describe('BackgroundCollector.tick', () => {
     expect(await collector.tick()).toBe('collected')
   })
 
-  it('al massimo una ricerca ogni 60 s, anche con tick più frequenti', async () => {
+  it('al massimo una ricerca ogni 60 s (tolleranza 2 s per il jitter del timer)', async () => {
     let t = now.getTime()
     expect(MIN_SEARCH_INTERVAL_MS).toBe(60_000)
+    expect(SEARCH_INTERVAL_TOLERANCE_MS).toBe(2_000)
     const { client, collector } = setup({
       now: () => new Date(t),
       minSearchIntervalMs: MIN_SEARCH_INTERVAL_MS
     })
     expect(await collector.tick()).toBe('collected')
-    t += 59_999
+    t += 30_000
+    expect(await collector.tick()).toBe('skipped')
+    t += 27_999
     expect(await collector.tick()).toBe('skipped')
     t += 1
     expect(await collector.tick()).toBe('collected')
     expect(client.searches).toHaveLength(2)
+  })
+
+  it('con il timer reale la cadenza resta di una ricerca ogni 60 s, anche se il tick arriva in anticipo', async () => {
+    vi.useFakeTimers()
+    let skew = 0
+    const { client, collector } = setup({
+      // l'orologio del sistema corre qualche ms avanti o indietro rispetto al timer
+      now: () => new Date(Date.now() + skew),
+      minSearchIntervalMs: MIN_SEARCH_INTERVAL_MS
+    })
+    collector.start(COLLECT_INTERVAL_MS, 0)
+    for (let i = 1; i <= 4; i++) {
+      skew = i % 2 === 0 ? -50 : 50
+      await vi.advanceTimersByTimeAsync(COLLECT_INTERVAL_MS)
+      expect(client.searches).toHaveLength(i)
+    }
+    collector.stop()
+  })
+
+  it('una richiesta rifiutata perché il trade è in pausa è un giro saltato, senza log', async () => {
+    const client = makeClient()
+    client.search = async () => {
+      throw tradePausedError()
+    }
+    const { collector, log } = setup({ client })
+    expect(await collector.tick()).toBe('skipped')
+    expect(log).not.toHaveBeenCalled()
   })
 
   it('salta durante una restrizione del trade (Review Focus 2), anche con ratio pieno', async () => {

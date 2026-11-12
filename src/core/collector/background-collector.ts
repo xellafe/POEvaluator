@@ -1,6 +1,6 @@
 import type { ListingStore } from '../db/listing-store'
 import type { Settings } from '../settings'
-import type { TradeClient } from '../trade/trade-client'
+import { isTradePausedError, type TradeClient } from '../trade/trade-client'
 import { toListing } from '../trade/listing-mapper'
 import { buildQuery } from '../trade/query-builder'
 import type { Listing, RareItem } from '../types'
@@ -15,6 +15,8 @@ export const MIN_RATIO = 0.6
 export const COLLECT_INTERVAL_MS = 60_000
 /** Al massimo una ricerca della raccolta ogni 60 s, qualunque sia l'intervallo dei tick. */
 export const MIN_SEARCH_INTERVAL_MS = 60_000
+/** Tolleranza sul controllo dei 60 s: il timer può arrivare qualche ms prima secondo Date.now(). */
+export const SEARCH_INTERVAL_TOLERANCE_MS = 2_000
 /** Pausa della raccolta oltre la fine di un blocco del trade (429 o restrizione). */
 export const RESTRICTION_COOLDOWN_MS = 15 * 60_000
 const FETCH_COUNT = 20
@@ -150,6 +152,8 @@ export class BackgroundCollector {
   async tick(): Promise<'collected' | 'skipped'> {
     const { client, settings, toExalted } = this.deps
     try {
+      const t = this.deps.now().getTime()
+      const minInterval = this.deps.minSearchIntervalMs ?? MIN_SEARCH_INTERVAL_MS
       const s = settings()
       if (
         !s.backgroundCollection ||
@@ -159,8 +163,7 @@ export class BackgroundCollector {
         client.blockedForMs() > 0 ||
         // dopo un 429 o una restrizione: 15 minuti di margine oltre la fine del blocco
         client.blockEndedAgoMs() < RESTRICTION_COOLDOWN_MS ||
-        this.deps.now().getTime() - this.lastSearchAt <
-          (this.deps.minSearchIntervalMs ?? MIN_SEARCH_INTERVAL_MS) ||
+        t - this.lastSearchAt < Math.max(0, minInterval - SEARCH_INTERVAL_TOLERANCE_MS) ||
         client.remainingRatio() < MIN_RATIO ||
         // senza tassi tutte le inserzioni verrebbero scartate: budget sprecato
         toExalted(1, 'exalted') === null ||
@@ -168,11 +171,13 @@ export class BackgroundCollector {
       ) {
         return 'skipped'
       }
-      const seed = this.nextSeed(s.league)
-      this.lastSearchAt = this.deps.now().getTime()
-      await this.collect(seed, s.league)
+      // istante letto all'inizio del tick: il tempo di nextSeed (SQLite) non sposta la cadenza
+      this.lastSearchAt = t
+      await this.collect(this.nextSeed(s.league), s.league)
       return 'collected'
     } catch (e) {
+      // trade bloccato durante il giro (429 o restrizione): giro saltato, la pausa fa il resto
+      if (isTradePausedError(e)) return 'skipped'
       this.deps.log?.(
         `raccolta in background fallita: ${e instanceof Error ? e.message : String(e)}`
       )
