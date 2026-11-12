@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@400;500;700;800&family=Cinzel:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
     <style>
@@ -182,53 +182,26 @@
       .theme-a {
         --font: Inter, 'Segoe UI', system-ui, sans-serif;
         --font-head: var(--font);
-        --surface: rgba(17, 19, 25, 0.94);
-        --surface-2: rgba(255, 255, 255, 0.045);
-        --border: rgba(255, 255, 255, 0.12);
-        --text: #f1f3f7;
-        --muted: #a7afbc;
-        --accent: #7ea6ff;
-        --accent-text: #0b1020;
-        --mod: #b9c3ff;
-        --r: 12px;
-        --r-sm: 7px;
-        --c-pessimo: #ff7a66;
-        --c-buono: #5cbcf2;
-        --c-ottimo: #3ddc9f;
-        --c-vendi: #ffd43b;
-        --c-neutral: #c3c9d4;
-        --c-warn: #ffcf70;
-        --pos: #3ddc9f;
-        --neg: #ff7a66;
-      }
-      .theme-b {
-        --font: 'Alegreya Sans', 'Segoe UI', system-ui, sans-serif;
-        --font-head: Cinzel, Georgia, serif;
         --surface: rgba(21, 17, 13, 0.95);
         --surface-2: rgba(201, 164, 92, 0.06);
-        --border: rgba(201, 164, 92, 0.42);
+        --border: rgba(201, 164, 92, 0.32);
         --text: #ede3cf;
         --muted: #b3a385;
         --accent: #c9a45c;
         --accent-text: #1a1206;
         --mod: #aeb8f2;
-        --r: 3px;
-        --r-sm: 2px;
+        --r: 10px;
+        --r-sm: 6px;
         --c-pessimo: #e8735a;
         --c-buono: #78b9e0;
         --c-ottimo: #58c995;
-        --c-vendi: #f4cd55;
+        --c-eccellente: #f4cd55;
         --c-neutral: #c4b9a4;
         --c-warn: #f0c46a;
         --pos: #58c995;
         --neg: #e8735a;
       }
-      .theme-b {
-        /* Alegreya Sans ha occhio medio piccolo: lo allineo a Inter per la leggibilità */
-        font-size-adjust: 0.54;
-      }
-      .theme-a,
-      .theme-b {
+      .theme-a {
         font-family: var(--font);
         color: var(--text);
       }
@@ -241,8 +214,8 @@
       .v-ottimo {
         --vc: var(--c-ottimo);
       }
-      .v-vendi {
-        --vc: var(--c-vendi);
+      .v-eccellente {
+        --vc: var(--c-eccellente);
       }
       .v-neutral {
         --vc: var(--c-neutral);
@@ -263,9 +236,6 @@
           sans-serif;
         text-align: center;
         white-space: nowrap;
-      }
-      .theme-b kbd {
-        border-radius: 2px;
       }
       .u {
         font-size: 0.6em;
@@ -367,17 +337,6 @@
       .btn[aria-disabled='true'] {
         opacity: 0.4;
         cursor: not-allowed;
-      }
-      .theme-b .btn {
-        font-family: var(--font-head);
-        font-size: 12px;
-        letter-spacing: 0.06em;
-        background: linear-gradient(180deg, #d9b56c, #a9843f);
-        border-color: #e2c27e;
-      }
-      .theme-b .btn.ghost {
-        background: transparent;
-        border-color: var(--border);
       }
       .icon-btn {
         display: grid;
@@ -481,14 +440,14 @@
         color: var(--muted);
         font-size: 11.5px;
       }
-      /* Vendi subito: etichetta piena, cornice nel colore del verdetto */
-      .badge.v-vendi {
+      /* Eccellente: etichetta piena, cornice nel colore del verdetto */
+      .badge.v-eccellente {
         border-color: var(--vc);
         box-shadow:
           0 10px 30px rgba(0, 0, 0, 0.65),
           0 0 18px rgba(255, 210, 60, 0.25);
       }
-      .v-vendi .b-verdict {
+      .v-eccellente .b-verdict {
         align-self: flex-start;
         display: inline-flex;
         padding: 3px 9px 3px 7px;
@@ -498,36 +457,6 @@
       }
       .badge.v-neutral::before {
         background: repeating-linear-gradient(180deg, var(--vc) 0 6px, transparent 6px 10px);
-      }
-      /* Tema B: doppia cornice dorata e intestazione calda */
-      .theme-b .badge {
-        border-color: rgba(201, 164, 92, 0.55);
-        background:
-          linear-gradient(180deg, rgba(201, 164, 92, 0.1), transparent 46px), var(--surface);
-      }
-      .theme-b .badge::after {
-        content: '';
-        position: absolute;
-        inset: 3px;
-        border: 1px solid rgba(201, 164, 92, 0.18);
-        pointer-events: none;
-      }
-      .theme-b .badge::before {
-        width: 3px;
-      }
-      .theme-b .b-verdict {
-        font-weight: 700;
-        font-size: 16px;
-        letter-spacing: 0.09em;
-      }
-      .theme-b .badge.v-vendi {
-        border-color: var(--vc);
-      }
-      .theme-b .v-vendi .b-verdict {
-        background: linear-gradient(180deg, #ffe08a, #d9a935);
-      }
-      .theme-b .b-price {
-        font-weight: 800;
       }
 
       /* ===================== Pannello analisi approfondita ===================== */
@@ -594,10 +523,6 @@
           sans-serif;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-      }
-      .theme-b .p-verdict {
-        border-radius: 2px;
-        font-weight: 700;
       }
       .p-verdict.pending {
         --vc: var(--muted);
@@ -781,48 +706,6 @@
         color: var(--muted);
         font-size: 12px;
       }
-      /* Tema B: cornice ornamentale */
-      .theme-b .panel,
-      .theme-b .window {
-        border-color: rgba(201, 164, 92, 0.6);
-      }
-      .theme-b .panel::after,
-      .theme-b .window::after {
-        content: '';
-        position: absolute;
-        inset: 4px;
-        border: 1px solid rgba(201, 164, 92, 0.2);
-        pointer-events: none;
-      }
-      .theme-b .p-head,
-      .theme-b .w-title {
-        background:
-          radial-gradient(ellipse at 50% 0%, rgba(201, 164, 92, 0.18), transparent 70%),
-          rgba(0, 0, 0, 0.15);
-        text-align: left;
-      }
-      .theme-b .p-sec h4 {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        color: var(--accent);
-      }
-      .theme-b .p-sec h4::before {
-        content: '';
-        width: 6px;
-        height: 6px;
-        background: var(--accent);
-        transform: rotate(45deg);
-      }
-      .theme-b .p-sec h4::after {
-        content: '';
-        flex: 1;
-        height: 1px;
-        background: linear-gradient(90deg, rgba(201, 164, 92, 0.5), transparent);
-      }
-      .theme-b .p-progress .track span {
-        background: linear-gradient(90deg, #a9843f, #e7c57a);
-      }
 
       /* ===================== Finestra impostazioni ===================== */
       .w-title {
@@ -835,9 +718,6 @@
           700 14px/1.3 var(--font-head),
           sans-serif;
         letter-spacing: 0.02em;
-      }
-      .theme-b .w-title {
-        letter-spacing: 0.08em;
       }
       .w-title .icon-btn {
         margin-left: auto;
@@ -867,9 +747,6 @@
           sans-serif;
         letter-spacing: 0.1em;
         text-transform: uppercase;
-      }
-      .theme-b .w-group h4 {
-        color: var(--accent);
       }
       .field {
         display: flex;
@@ -1004,13 +881,6 @@
         font-size: 12.5px;
         font-weight: 700;
       }
-      .theme-b .toggle {
-        border-radius: 2px;
-      }
-      .theme-b .toggle::after {
-        border-radius: 1px;
-        background: #f6e9c8;
-      }
       .w-foot {
         display: flex;
         justify-content: flex-end;
@@ -1033,7 +903,7 @@
       <symbol id="i-pessimo" viewBox="0 0 24 24"><path d="M2.5 5h19L12 21z" /></symbol>
       <symbol id="i-buono" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /></symbol>
       <symbol id="i-ottimo" viewBox="0 0 24 24"><path d="M12 3l9.5 16h-19z" /></symbol>
-      <symbol id="i-vendi" viewBox="0 0 24 24">
+      <symbol id="i-eccellente" viewBox="0 0 24 24">
         <path d="M12 1.5l3.1 6.9 7.4.7-5.6 5 1.6 7.4L12 17.7l-6.5 3.8 1.6-7.4-5.6-5 7.4-.7z" />
       </symbol>
       <symbol id="i-warn" viewBox="0 0 24 24">
@@ -1071,8 +941,8 @@
       <header>
         <h1>POEvaluator · Mockup interfaccia M1</h1>
         <p>
-          Due direzioni visive con gli stessi contenuti: cambia solo lo stile. Ogni mockup è
-          disegnato sopra uno sfondo segnaposto scuro e rumoroso, con una zona luminosa, per
+          Direzione scelta: layout minimal moderno con la palette gotica (oro/bronzo su fondo
+          scuro caldo). Ogni mockup è disegnato sopra uno sfondo segnaposto scuro e rumoroso, con una zona luminosa, per
           verificare la leggibilità sopra la scena di gioco. I dati sono di esempio.
         </p>
         <div class="legend">
@@ -1086,9 +956,8 @@
           <span class="theme-a v-ottimo" style="color: var(--vc)"
             ><svg class="ico"><use href="#i-ottimo" /></svg>Ottimo · triangolo in su</span
           >
-          <span class="theme-a v-vendi" style="color: var(--vc)"
-            ><svg class="ico"><use href="#i-vendi" /></svg>VENDI SUBITO · stella su etichetta
-            piena</span
+          <span class="theme-a v-eccellente" style="color: var(--vc)"
+            ><svg class="ico"><use href="#i-eccellente" /></svg>Eccellente · stella su etichetta piena</span
           >
         </div>
       </header>
@@ -1102,16 +971,7 @@
         </p>
         <div class="cols">
           <div>
-            <div class="col-title">
-              A · Minimal moderno <small>sans-serif, pannelli piatti</small>
-            </div>
             <div class="scene badges theme-a" data-fill="badges"></div>
-          </div>
-          <div>
-            <div class="col-title">
-              B · Gotico sobrio <small>titoli serif, cornici e accenti oro</small>
-            </div>
-            <div class="scene badges theme-b" data-fill="badges"></div>
           </div>
         </div>
       </section>
@@ -1125,12 +985,7 @@
         </p>
         <div class="cols">
           <div>
-            <div class="col-title">A · Minimal moderno</div>
             <div class="scene stack theme-a" data-fill="panel"></div>
-          </div>
-          <div>
-            <div class="col-title">B · Gotico sobrio</div>
-            <div class="scene stack theme-b" data-fill="panel"></div>
           </div>
         </div>
       </section>
@@ -1143,12 +998,7 @@
         </p>
         <div class="cols">
           <div>
-            <div class="col-title">A · Minimal moderno</div>
             <div class="scene stack theme-a" data-fill="settings"></div>
-          </div>
-          <div>
-            <div class="col-title">B · Gotico sobrio</div>
-            <div class="scene stack theme-b" data-fill="settings"></div>
           </div>
         </div>
       </section>
@@ -1175,7 +1025,7 @@
       </section>
     </div>
 
-    <!-- ===================== Template dei mockup (uguali per i due temi) ===================== -->
+    <!-- ===================== Template dei mockup ===================== -->
     <template id="tpl-badge-pessimo">
       <div class="badge v-pessimo">
         <div class="b-body">
@@ -1228,14 +1078,14 @@
       </div>
     </template>
 
-    <template id="tpl-badge-vendi">
-      <div class="badge v-vendi">
+    <template id="tpl-badge-eccellente">
+      <div class="badge v-eccellente">
         <div class="b-body">
           <div class="b-top">
             <span>Gale Stride</span><span class="conf c2"><i></i><i></i><i></i>media</span>
           </div>
           <div class="b-verdict">
-            <svg class="ico"><use href="#i-vendi" /></svg>Vendi subito
+            <svg class="ico"><use href="#i-eccellente" /></svg>Eccellente
           </div>
           <div class="b-price">1.8 div <span class="ex">(450 ex)</span></div>
           <div class="b-meta">Fascia 1.4–2.4 div · 4 comparabili</div>
@@ -1316,7 +1166,7 @@
           <div class="p-progress">
             <div class="track"><span style="width: 37.5%"></span></div>
             <div class="p-progress-txt">
-              <span>Ricerca 3 di 8 sul trade</span><span>circa 40 s</span>
+              <span>Ricerca 3 di 8 sul trade</span>
             </div>
           </div>
           <div class="p-prelim">Stima rapida (dati locali): <b>Ottimo · 120 ex</b></div>
@@ -1428,7 +1278,7 @@
           </div>
         </div>
         <footer class="p-foot">
-          <span>Lega Standard · aggiornato ora</span>
+          <span>Lega Standard</span>
           <a class="btn" href="#"
             >Apri sul trade<svg class="ico"><use href="#i-ext" /></svg
           ></a>
@@ -1487,9 +1337,9 @@
                 >
                 <span class="val">da <span class="input num">50</span> ex</span>
               </div>
-              <div class="v-vendi">
+              <div class="v-eccellente">
                 <span class="lbl"
-                  ><svg class="ico"><use href="#i-vendi" /></svg>Vendi subito</span
+                  ><svg class="ico"><use href="#i-eccellente" /></svg>Eccellente</span
                 >
                 <span class="val">da <span class="input num">300</span> ex</span>
               </div>
@@ -1504,8 +1354,8 @@
               <span class="v-ottimo" style="flex: 1.8"
                 ><svg class="ico"><use href="#i-ottimo" /></svg>50–300</span
               >
-              <span class="v-vendi" style="flex: 1.2"
-                ><svg class="ico"><use href="#i-vendi" /></svg>≥ 300</span
+              <span class="v-eccellente" style="flex: 1.2"
+                ><svg class="ico"><use href="#i-eccellente" /></svg>≥ 300</span
               >
             </div>
           </div>
@@ -1534,20 +1384,20 @@
           </div>
         </div>
         <div class="w-foot">
-          <span class="saved">Modifiche non salvate</span>
+          <span></span>
           <a class="btn ghost">Annulla</a><a class="btn">Salva</a>
         </div>
       </div>
     </template>
 
     <script>
-      // Riempie le due colonne (tema A e B) con gli stessi template.
+      // Riempie le scene con i template.
       const gallery = {
         badges: [
           ['badge-pessimo', 'Pessimo', true],
           ['badge-buono', 'Buono', true],
           ['badge-ottimo', 'Ottimo · con avviso', true],
-          ['badge-vendi', 'VENDI SUBITO', true],
+          ['badge-eccellente', 'Eccellente', true],
           ['badge-loading', 'Caricamento', true],
           ['badge-err-adv', 'Errore · testo avanzato', true],
           ['badge-err-empty', 'Errore · nessun oggetto', true],
