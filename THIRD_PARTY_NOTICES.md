@@ -44,3 +44,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Inter (font)
+
+- Package: `@fontsource-variable/inter` (font files bundled into the renderer build)
+- Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
+- License: SIL Open Font License 1.1 — full text in
+  `node_modules/@fontsource-variable/inter/LICENSE` and at https://openfontlicense.org

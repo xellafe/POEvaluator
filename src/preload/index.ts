@@ -1,6 +1,13 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import { IPC, type PoeApi, type ProgressPayload, type ResultPayload } from '../core/ipc'
+import {
+  IPC,
+  type AnalyzingPayload,
+  type PoeApi,
+  type ProgressPayload,
+  type ResultPayload,
+  type StartedPayload
+} from '../core/ipc'
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   const listener = (_e: IpcRendererEvent, payload: T): void => cb(payload)
@@ -14,7 +21,11 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 const poe: PoeApi = {
   onResult: (cb) => subscribe<ResultPayload>(IPC.result, cb),
   onProgress: (cb) => subscribe<ProgressPayload>(IPC.progress, cb),
+  onStarted: (cb) => subscribe<StartedPayload>(IPC.started, cb),
+  onAnalyzing: (cb) => subscribe<AnalyzingPayload>(IPC.analyzing, cb),
+  onDismiss: (cb) => subscribe<void>(IPC.dismiss, () => cb()),
   requestDeep: () => ipcRenderer.send(IPC.deep),
+  setInteractive: (on) => ipcRenderer.send(IPC.interactive, on === true),
   getSettings: () => ipcRenderer.invoke(IPC.getSettings),
   setSettings: (patch) => ipcRenderer.invoke(IPC.setSettings, patch)
 }

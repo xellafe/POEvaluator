@@ -1,23 +1,28 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, ipcMain, type Tray } from 'electron'
 import { join } from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { UiohookKey, uIOhook } from 'uiohook-napi'
+import icon from '../../resources/icon.png?asset'
 import { BackgroundCollector } from '../core/collector/background-collector'
 import { ListingStore } from '../core/db/listing-store'
 import {
   IPC,
+  type AnalyzingPayload,
   type EvalError,
   type ProgressPayload,
   type ResultPayload,
-  type SettingsPatch
+  type SettingsPatch,
+  type StartedPayload
 } from '../core/ipc'
 import { initParserData } from '../core/parser/parse-item'
 import { fetchRates } from '../core/pricing/currency'
 import type { Settings } from '../core/settings'
 import { TradeClient } from '../core/trade/trade-client'
+import { DEFAULT_MAX_SEARCHES } from '../core/valuation/deep-analysis'
 import { copyHoveredItem } from './capture'
 import { EvaluatorService, type EvalResult } from './evaluator-service'
 import { matchesHotkey, parseHotkey, type Hotkey } from './input'
+import { createTray, openSettingsWindow, Overlay } from './overlay'
 import { DEEP_BUSY_MESSAGE, RequestGate } from './request-gate'
 import { applyPatch, loadSettings, saveSettings } from './settings-file'
 
@@ -27,13 +32,9 @@ const errMsg = (e: unknown): string => (e instanceof Error ? (e.stack ?? e.messa
 // Nessun crash per promise rifiutate non gestite (es. un tick del collector che rigetta fuori dal suo try).
 process.on('unhandledRejection', (reason) => log(`unhandledRejection: ${errMsg(reason)}`))
 
-/**
- * Hook per limitare le hotkey a PoE2 in primo piano. Per ora sempre vero: il controllo della
- * finestra attiva arriva con l'overlay (Task 13).
- */
-const isGameFocused = (): boolean => true
-
-let mainWindow: BrowserWindow | null = null
+let overlay: Overlay | null = null
+/** Riferimento tenuto vivo: un Tray raccolto dal garbage collector sparisce. */
+let tray: Tray | null = null
 let settings: Settings
 let settingsPath: string
 let store: ListingStore | null = null
@@ -43,45 +44,31 @@ let hotkeys: { quick: Hotkey | null; deep: Hotkey | null } = { quick: null, deep
 let lastItemText = ''
 const gate = new RequestGate()
 
-function createWindow(): void {
-  // Finestra provvisoria del template: l'overlay arriva con il Task 13.
-  mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
-    show: false,
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
-  })
+/** Hotkey e overlay attivi solo con PoE2 in primo piano (focus/blur da electron-overlay-window). */
+const isGameFocused = (): boolean => overlay?.gameFocused ?? false
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow?.show()
-  })
-  mainWindow.on('closed', () => {
-    mainWindow = null
-  })
+type Payload = ResultPayload | ProgressPayload | StartedPayload | AnalyzingPayload
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
-
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+function send(channel: string, payload?: Payload): void {
+  overlay?.send(channel, payload)
 }
 
-function send(channel: string, payload: ResultPayload | ProgressPayload): void {
-  mainWindow?.webContents.send(channel, payload)
-}
+/** Exalted per 1 divine con i tassi correnti (null prima del primo download). */
+const exaltedPerDivine = (): number | null => service?.toExalted(1, 'divine') ?? null
 
-function sendResult(kind: ResultPayload['kind'], r: EvalResult): void {
+function sendResult(kind: ResultPayload['kind'], r: EvalResult, busy = false): void {
   log(`${kind}: ${JSON.stringify(r.ok ? r.valuation : r.message)}`)
-  send(IPC.result, { kind, ...r })
+  send(IPC.result, {
+    kind,
+    exaltedPerDivine: exaltedPerDivine(),
+    ...r,
+    ...(busy ? { busy: true as const } : {})
+  })
+}
+
+/** Richiesta accettata: il renderer mostra il caricamento vicino al cursore. */
+function sendStarted(kind: StartedPayload['kind']): void {
+  send(IPC.started, { kind, anchor: overlay?.cursor() ?? null })
 }
 
 function registerHotkeys(): void {
@@ -120,30 +107,46 @@ async function respond(
 async function requestDeep(getText: () => Promise<string>): Promise<void> {
   const svc = service
   if (!svc) return
-  const outcome = await gate.runDeep(() =>
-    respond('deep', async () => {
+  const outcome = await gate.runDeep(() => {
+    sendStarted('deep')
+    return respond('deep', async () => {
       const text = await getText()
       lastItemText = text
+      // la stima rapida (locale) apre subito il pannello; errori di lettura escono qui
+      const quick = svc.quick(text)
+      if (!quick.ok) return quick
+      send(IPC.analyzing, {
+        item: quick.item,
+        quick: quick.valuation,
+        exaltedPerDivine: exaltedPerDivine(),
+        totalSearches: DEFAULT_MAX_SEARCHES
+      })
       return svc.deep(text, (done, total) => send(IPC.progress, { done, total }))
     })
-  )
-  if (outcome === 'busy') sendResult('deep', { ok: false, ...DEEP_BUSY_MESSAGE })
+  })
+  if (outcome === 'busy') sendResult('deep', { ok: false, ...DEEP_BUSY_MESSAGE }, true)
 }
 
 const captureItem = (): Promise<string> => gate.capture(copyHoveredItem)
 
 function onKeydown(e: Parameters<typeof matchesHotkey>[0]): void {
-  if (!service || !isGameFocused()) return
+  if (!isGameFocused()) return
+  if (e.keycode === UiohookKey.Escape) {
+    send(IPC.dismiss)
+    return
+  }
+  if (!service) return
   const svc = service
   if (hotkeys.quick && matchesHotkey(e, hotkeys.quick)) {
     // la rapida è locale: parte anche durante un'approfondita (solo la cattura è in serie)
-    void gate.runQuick(() =>
-      respond('quick', async () => {
+    void gate.runQuick(() => {
+      sendStarted('quick')
+      return respond('quick', async () => {
         const text = await captureItem()
         lastItemText = text
         return svc.quick(text)
       })
-    )
+    })
   } else if (hotkeys.deep && matchesHotkey(e, hotkeys.deep)) {
     void requestDeep(captureItem)
   }
@@ -164,25 +167,22 @@ function registerIpc(): void {
     if (prev.league !== settings.league) void service?.reloadRates()
     return settings
   })
-  // "Analizza" sul badge: analisi approfondita dell'ultimo oggetto catturato.
+  // Click sul badge: analisi approfondita dell'ultimo oggetto catturato.
   ipcMain.on(IPC.deep, () => {
     const text = lastItemText
     void requestDeep(async () => text)
   })
+  ipcMain.on(IPC.interactive, (_e, on: unknown) => overlay?.setInteractive(on === true))
 }
 
 async function startServices(): Promise<void> {
-  const userData = app.getPath('userData')
-  settingsPath = join(userData, 'settings.json')
-  settings = loadSettings(settingsPath, log)
-  log(`impostazioni: ${settingsPath} (league ${settings.league})`)
-
   const dataDir = app.isPackaged
     ? join(process.resourcesPath, 'data')
     : join(app.getAppPath(), 'data')
   await initParserData(join(dataDir, 'en'))
   log(`dati parser caricati da ${dataDir}`)
 
+  const userData = app.getPath('userData')
   const dbPath = join(userData, 'poevaluator.db')
   store = new ListingStore(dbPath)
   log(`database aperto: ${dbPath}`)
@@ -210,7 +210,6 @@ async function startServices(): Promise<void> {
   })
   collector.start()
 
-  registerIpc()
   registerHotkeys()
   uIOhook.on('keydown', onKeydown)
   uIOhook.start()
@@ -227,32 +226,43 @@ function shutdown(): void {
   service?.stop()
   store?.close()
   store = null
+  tray?.destroy()
+  tray = null
 }
 
-app.whenReady().then(async () => {
-  electronApp.setAppUserModelId('com.poevaluator')
+const showSettings = (): void => openSettingsWindow(icon, log)
 
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+// Una sola istanza: due hook di tastiera risponderebbero due volte alla stessa hotkey.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', showSettings)
+
+  app.whenReady().then(async () => {
+    electronApp.setAppUserModelId('com.poevaluator')
+
+    app.on('browser-window-created', (_, window) => {
+      optimizer.watchWindowShortcuts(window)
+    })
+
+    // Le impostazioni servono anche se l'avvio dei servizi fallisce (es. per correggere la lega).
+    settingsPath = join(app.getPath('userData'), 'settings.json')
+    settings = loadSettings(settingsPath, log)
+    log(`impostazioni: ${settingsPath} (league ${settings.league})`)
+    registerIpc()
+
+    overlay = new Overlay(log)
+    tray = createTray(icon, showSettings, () => app.quit())
+
+    try {
+      await startServices()
+    } catch (e) {
+      log(`avvio fallito: ${errMsg(e)}`)
+    }
   })
-
-  try {
-    await startServices()
-  } catch (e) {
-    log(`avvio fallito: ${errMsg(e)}`)
-  }
-
-  createWindow()
-
-  app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  })
-})
+}
 
 app.on('will-quit', shutdown)
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
-})
+// L'app vive nel tray: chiudere la finestra impostazioni non la termina (l'overlay resta aperto).
+app.on('window-all-closed', () => {})
