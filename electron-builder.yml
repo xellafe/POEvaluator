@@ -11,6 +11,10 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+# Dati del parser (stats/items) letti a runtime da process.resourcesPath/data
+extraResources:
+  - from: data
+    to: data
 win:
   executableName: poevaluator
 nsis:

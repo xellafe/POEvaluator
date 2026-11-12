@@ -1,16 +1,28 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import { IPC, type PoeApi, type ProgressPayload, type ResultPayload } from '../core/ipc'
 
-// Custom APIs for renderer
-const api = {}
+function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
+  const listener = (_e: IpcRendererEvent, payload: T): void => cb(payload)
+  ipcRenderer.on(channel, listener)
+  return () => {
+    ipcRenderer.removeListener(channel, listener)
+  }
+}
 
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
+// API del renderer: solo IPC, niente rete (il trade passa dal main, che imposta lo User-Agent).
+const poe: PoeApi = {
+  onResult: (cb) => subscribe<ResultPayload>(IPC.result, cb),
+  onProgress: (cb) => subscribe<ProgressPayload>(IPC.progress, cb),
+  requestDeep: () => ipcRenderer.send(IPC.deep),
+  getSettings: () => ipcRenderer.invoke(IPC.getSettings),
+  setSettings: (patch) => ipcRenderer.invoke(IPC.setSettings, patch)
+}
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
-    contextBridge.exposeInMainWorld('api', api)
+    contextBridge.exposeInMainWorld('poe', poe)
   } catch (error) {
     console.error(error)
   }
@@ -18,5 +30,5 @@ if (process.contextIsolated) {
   // @ts-ignore (define in dts)
   window.electron = electronAPI
   // @ts-ignore (define in dts)
-  window.api = api
+  window.poe = poe
 }

@@ -1,6 +1,6 @@
 {
   "name": "poevaluator",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Valutatore di item rari per Path of Exile 2",
   "main": "./out/main/index.js",
   "author": "POEvaluator contributors",
@@ -21,7 +21,8 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
-    "neverthrow": "^8.2.0"
+    "neverthrow": "^8.2.0",
+    "uiohook-napi": "^1.5.5"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.1",
