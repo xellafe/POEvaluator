@@ -70,6 +70,11 @@ export class RateLimiter {
     }
   }
 
+  /** Blocca il limiter per almeno `ms` (attesa di sicurezza dopo un 429 senza Retry-After). */
+  blockFor(ms: number): void {
+    this.blockedUntil = Math.max(this.blockedUntil, this.now() + ms)
+  }
+
   recordRequest(): void {
     this.requests.push(this.now())
     this.prune()

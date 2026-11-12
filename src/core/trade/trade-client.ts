@@ -39,15 +39,23 @@ interface Job {
   kind: Kind
   url: string
   init: { method: string; body?: string }
+  /** Risposte 429 già ricevute per questo job. */
+  attempts: number
   resolve: (v: unknown) => void
   reject: (e: Error) => void
 }
 
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+/** Attesa minima dopo un 429 senza Retry-After (il limiter da solo potrebbe non bloccare). */
+const MIN_429_WAIT_MS = 1000
+
+const byPriority = (a: Job, b: Job): number =>
+  PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] || a.seq - b.seq
 
 /**
  * Client trade2. Le richieste partono una alla volta da un'unica coda a priorità
  * (user > stash > background, FIFO a parità); ogni endpoint ha il proprio RateLimiter.
+ * Nessuna attesa tiene occupata la coda: parte il job pronto (limiter libero) più importante,
+ * così un job in attesa su un endpoint non blocca quelli diretti a un endpoint libero.
  */
 export class TradeClient {
   private readonly userAgent: string
@@ -57,6 +65,8 @@ export class TradeClient {
   private inFlight: Job | null = null
   private pumping = false
   private seq = 0
+  /** Risveglia il pump in attesa (nuovo job in coda); null se il pump non sta aspettando. */
+  private wake: (() => void) | null = null
   private readonly onRateLimited?: (kind: Kind, attempt: number) => void
 
   constructor(opts: {
@@ -140,36 +150,63 @@ export class TradeClient {
     priority: Priority
   ): Promise<unknown> {
     return new Promise((resolve, reject) => {
-      this.queue.push({ priority, seq: this.seq++, kind, url, init, resolve, reject })
+      this.queue.push({ priority, seq: this.seq++, kind, url, init, attempts: 0, resolve, reject })
       // avvio asincrono: le richieste accodate nello stesso tick competono per priorità
       void Promise.resolve().then(() => this.pump())
+      this.wake?.()
     })
   }
 
+  /**
+   * Il job pronto più importante (priorità, poi FIFO), tolto dalla coda. Un job non parte se un
+   * job più importante attende lo stesso limiter: non gli consuma il budget.
+   */
   private next(): Job | undefined {
-    let best = -1
-    for (let i = 0; i < this.queue.length; i++) {
-      if (
-        best < 0 ||
-        PRIORITY_ORDER[this.queue[i].priority] < PRIORITY_ORDER[this.queue[best].priority] ||
-        (this.queue[i].priority === this.queue[best].priority &&
-          this.queue[i].seq < this.queue[best].seq)
-      ) {
-        best = i
+    const waiting = new Set<Kind>()
+    for (const job of [...this.queue].sort(byPriority)) {
+      if (waiting.has(job.kind)) continue
+      if (this.limiters[job.kind].delayMs() > 0) {
+        waiting.add(job.kind)
+        continue
       }
+      this.queue.splice(this.queue.indexOf(job), 1)
+      return job
     }
-    return best < 0 ? undefined : this.queue.splice(best, 1)[0]
+    return undefined
+  }
+
+  /** Attende `ms` o il prossimo enqueue, il primo dei due. */
+  private sleepOrWake(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | undefined = undefined
+      const done = (): void => {
+        clearTimeout(timer)
+        this.wake = null
+        resolve()
+      }
+      timer = setTimeout(done, ms)
+      this.wake = done
+    })
   }
 
   private async pump(): Promise<void> {
     if (this.pumping) return
     this.pumping = true
     try {
-      let job: Job | undefined
-      while ((job = this.next())) {
+      while (this.queue.length > 0) {
+        const job = this.next()
+        if (!job) {
+          // nessun job pronto: si attende il limiter che si libera per primo (o un nuovo job)
+          const wait = Math.min(...this.queue.map((j) => this.limiters[j.kind].delayMs()))
+          await this.sleepOrWake(Math.max(1, wait))
+          continue
+        }
         this.inFlight = job
         try {
-          job.resolve(await this.run(job))
+          const outcome = await this.run(job)
+          if (outcome.retry)
+            this.queue.push(job) // stesso seq e priorità: riprende il suo posto
+          else job.resolve(outcome.value)
         } catch (e) {
           job.reject(e instanceof Error ? e : new Error(String(e)))
         }
@@ -180,38 +217,34 @@ export class TradeClient {
     }
   }
 
-  private async run(job: Job): Promise<unknown> {
+  /** Una sola richiesta HTTP; su 429 chiede di rimettere il job in coda (fino a 3 ripetizioni). */
+  private async run(job: Job): Promise<{ retry: true } | { retry: false; value: unknown }> {
     const limiter = this.limiters[job.kind]
-    for (let attempt = 0; ; attempt++) {
-      const wait = limiter.delayMs()
-      if (wait > 0) await sleep(wait)
-      limiter.recordRequest()
-      const headers: Record<string, string> = {
-        'User-Agent': this.userAgent,
-        Accept: 'application/json'
-      }
-      if (job.init.body !== undefined) headers['Content-Type'] = 'application/json'
-      const res = await this.withTimeout((signal) =>
-        this.fetchImpl(job.url, { ...job.init, headers, signal })
-      )
-      limiter.update(res.headers)
-      if (res.status === 429) {
-        this.onRateLimited?.(job.kind, attempt + 1)
-        if (attempt >= MAX_429_RETRIES) {
-          throw new Error(
-            `Trade API: troppe risposte 429 (rate limit) dopo ${attempt + 1} tentativi`
-          )
-        }
-        // senza Retry-After il limiter potrebbe non bloccare: attesa minima di sicurezza
-        if (limiter.delayMs() === 0) await sleep(1000)
-        continue
-      }
-      if (!res.ok) {
-        const body = (await res.text().catch(() => '')).slice(0, 200)
-        throw new Error(`Trade API: HTTP ${res.status} ${body}`.trim())
-      }
-      return this.withTimeout(() => res.json())
+    limiter.recordRequest()
+    const headers: Record<string, string> = {
+      'User-Agent': this.userAgent,
+      Accept: 'application/json'
     }
+    if (job.init.body !== undefined) headers['Content-Type'] = 'application/json'
+    const res = await this.withTimeout((signal) =>
+      this.fetchImpl(job.url, { ...job.init, headers, signal })
+    )
+    limiter.update(res.headers)
+    if (res.status === 429) {
+      const attempt = job.attempts++
+      this.onRateLimited?.(job.kind, attempt + 1)
+      if (attempt >= MAX_429_RETRIES) {
+        throw new Error(`Trade API: troppe risposte 429 (rate limit) dopo ${attempt + 1} tentativi`)
+      }
+      // senza Retry-After il limiter potrebbe non bloccare: attesa minima di sicurezza
+      if (limiter.delayMs() === 0) limiter.blockFor(MIN_429_WAIT_MS)
+      return { retry: true }
+    }
+    if (!res.ok) {
+      const body = (await res.text().catch(() => '')).slice(0, 200)
+      throw new Error(`Trade API: HTTP ${res.status} ${body}`.trim())
+    }
+    return { retry: false, value: await this.withTimeout(() => res.json()) }
   }
 
   /** Timeout per richiesta (setTimeout, non AbortSignal.timeout, per i fake timer): errore chiaro. */

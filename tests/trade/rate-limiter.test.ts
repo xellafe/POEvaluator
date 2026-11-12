@@ -112,6 +112,18 @@ describe('RateLimiter', () => {
     expect(l.delayMs()).toBe(0)
   })
 
+  it('blockFor blocca per almeno il tempo indicato senza accorciare un blocco più lungo', () => {
+    let t = 0
+    const l = new RateLimiter(() => t)
+    l.blockFor(1000)
+    expect(l.delayMs()).toBe(1000)
+    l.update(headers({ 'Retry-After': '5' }))
+    l.blockFor(1000)
+    expect(l.delayMs()).toBe(5000)
+    t = 5000
+    expect(l.delayMs()).toBe(0)
+  })
+
   it('restrizione più lunga del periodo: remainingRatio 0 e blockedForMs fino alla fine del blocco', () => {
     let t = 0
     const l = new RateLimiter(() => t)
