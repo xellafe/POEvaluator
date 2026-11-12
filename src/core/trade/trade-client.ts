@@ -1,4 +1,9 @@
-import { RateLimiter } from './rate-limiter'
+import {
+  describeRateLimitHeaders,
+  hasActiveRestriction,
+  RateLimiter,
+  type RateLimiterJSON
+} from './rate-limiter'
 
 export type Priority = 'user' | 'stash' | 'background'
 export interface SearchResult {
@@ -7,7 +12,8 @@ export interface SearchResult {
   total: number
 }
 
-type Kind = 'search' | 'fetch' | 'data'
+export type Kind = 'search' | 'fetch' | 'data'
+const KINDS: Kind[] = ['search', 'fetch', 'data']
 
 const BASE = 'https://www.pathofexile.com'
 const FETCH_CHUNK = 10
@@ -65,8 +71,11 @@ const byPriority = (a: Job, b: Job): number =>
 /**
  * Client trade2. Le richieste partono una alla volta da un'unica coda a priorità
  * (user > stash > background, FIFO a parità); ogni endpoint ha il proprio RateLimiter.
- * Nessuna attesa tiene occupata la coda: parte il job pronto (limiter libero) più importante,
- * così un job in attesa su un endpoint non blocca quelli diretti a un endpoint libero.
+ * Nessuna attesa per finestra piena tiene occupata la coda: parte il job pronto (limiter libero)
+ * più importante, così un job in attesa su un endpoint non blocca quelli diretti a un endpoint
+ * libero. Un blocco del server (Retry-After, restrizione attiva, 429) su qualunque endpoint ferma
+ * invece tutta la coda: la restrizione di GGG vale per IP e le richieste fatte durante la
+ * restrizione la allungano. Le richieste background usano al massimo metà di ogni regola.
  */
 export class TradeClient {
   private readonly userAgent: string
@@ -78,16 +87,27 @@ export class TradeClient {
   private seq = 0
   /** Risveglia il pump in attesa (nuovo job in coda); null se il pump non sta aspettando. */
   private wake: (() => void) | null = null
-  private readonly onRateLimited?: (kind: Kind, attempt: number) => void
+  private readonly onRateLimited?: (kind: Kind, attempt: number, headers: string) => void
+  private readonly onRestriction?: (kind: Kind, headers: string) => void
+  private readonly onResponse?: () => void
 
   constructor(opts: {
     userAgent: string
     fetchImpl?: typeof fetch
     limiters?: { search?: RateLimiter; fetch?: RateLimiter; data?: RateLimiter }
-    /** Chiamato a ogni risposta 429 (diagnostica: in condizioni normali non deve accadere). */
-    onRateLimited?: (kind: Kind, attempt: number) => void
+    /**
+     * Chiamato a ogni risposta 429 (diagnostica: in condizioni normali non deve accadere), con gli
+     * header del rate limit in una riga (`describeRateLimitHeaders`).
+     */
+    onRateLimited?: (kind: Kind, attempt: number, headers: string) => void
+    /** Chiamato a ogni risposta non 429 che riporta una restrizione attiva (diagnostica). */
+    onRestriction?: (kind: Kind, headers: string) => void
+    /** Chiamato dopo ogni risposta ricevuta, a stato dei limiter aggiornato (salvataggio). */
+    onResponse?: () => void
   }) {
     this.onRateLimited = opts.onRateLimited
+    this.onRestriction = opts.onRestriction
+    this.onResponse = opts.onResponse
     this.userAgent = opts.userAgent
     this.fetchImpl = opts.fetchImpl ?? ((input, init) => globalThis.fetch(input, init))
     this.limiters = {
@@ -154,17 +174,37 @@ export class TradeClient {
     return !this.queue.some(busy) && !(this.inFlight && busy(this.inFlight))
   }
 
+  /** Frazione libera del budget di search e fetch (la minore); 0 durante un blocco globale. */
   remainingRatio(): number {
+    if (this.blockedForMs() > 0) return 0
     return Math.min(this.limiters.search.remainingRatio(), this.limiters.fetch.remainingRatio())
   }
 
-  /** Millisecondi di blocco residui imposti dal sito del trade (il più lungo tra search e fetch). */
+  /** Millisecondi di blocco globale residui imposti dal sito del trade (il più lungo tra gli endpoint). */
   blockedForMs(): number {
-    return Math.max(
-      this.limiters.search.blockedForMs(),
-      this.limiters.fetch.blockedForMs(),
-      this.limiters.data.blockedForMs()
-    )
+    return Math.max(...KINDS.map((k) => this.limiters[k].blockedForMs()))
+  }
+
+  /**
+   * Millisecondi dalla fine del blocco più recente (429 o restrizione), negativo durante il
+   * blocco; Infinity se non c'è mai stato un blocco.
+   */
+  blockEndedAgoMs(): number {
+    return Math.min(...KINDS.map((k) => this.limiters[k].blockEndedAgoMs()))
+  }
+
+  /** Stato dei limiter da salvare su disco (userData/rate-limits.json). */
+  snapshot(): Record<Kind, RateLimiterJSON> {
+    return {
+      search: this.limiters.search.toJSON(),
+      fetch: this.limiters.fetch.toJSON(),
+      data: this.limiters.data.toJSON()
+    }
+  }
+
+  /** Attesa del job sul proprio limiter (le richieste background si fermano al 50%). */
+  private delayOf(job: Job): number {
+    return this.limiters[job.kind].delayMs(job.priority === 'background')
   }
 
   private enqueue(
@@ -216,10 +256,11 @@ export class TradeClient {
    * job più importante attende lo stesso limiter: non gli consuma il budget.
    */
   private next(): Job | undefined {
+    if (this.blockedForMs() > 0) return undefined // blocco globale: non parte nulla
     const waiting = new Set<Kind>()
     for (const job of [...this.queue].sort(byPriority)) {
       if (waiting.has(job.kind)) continue
-      if (this.limiters[job.kind].delayMs() > 0) {
+      if (this.delayOf(job) > 0) {
         waiting.add(job.kind)
         continue
       }
@@ -250,8 +291,10 @@ export class TradeClient {
       while (this.queue.length > 0) {
         const job = this.next()
         if (!job) {
-          // nessun job pronto: si attende il limiter che si libera per primo (o un nuovo job)
-          const wait = Math.min(...this.queue.map((j) => this.limiters[j.kind].delayMs()))
+          // nessun job pronto: si attende la fine del blocco globale o il limiter che si libera
+          // per primo (o un nuovo job)
+          const blocked = this.blockedForMs()
+          const wait = blocked > 0 ? blocked : Math.min(...this.queue.map((j) => this.delayOf(j)))
           await this.sleepOrWake(Math.max(1, wait))
           continue
         }
@@ -290,13 +333,18 @@ export class TradeClient {
     limiter.update(res.headers)
     if (res.status === 429) {
       const attempt = job.attempts++
-      this.onRateLimited?.(job.kind, attempt + 1)
+      // senza Retry-After né restrizione nello stato: attesa minima di sicurezza, per tutta la coda
+      if (this.blockedForMs() === 0) limiter.blockFor(MIN_429_WAIT_MS)
+      this.onResponse?.()
+      this.onRateLimited?.(job.kind, attempt + 1, describeRateLimitHeaders(res.headers))
       if (attempt >= MAX_429_RETRIES) {
         throw new Error(`Trade API: troppe risposte 429 (rate limit) dopo ${attempt + 1} tentativi`)
       }
-      // senza Retry-After il limiter potrebbe non bloccare: attesa minima di sicurezza
-      if (limiter.delayMs() === 0) limiter.blockFor(MIN_429_WAIT_MS)
       return { retry: true }
+    }
+    this.onResponse?.()
+    if (hasActiveRestriction(res.headers)) {
+      this.onRestriction?.(job.kind, describeRateLimitHeaders(res.headers))
     }
     if (!res.ok) {
       const body = (await res.text().catch(() => '')).slice(0, 200)

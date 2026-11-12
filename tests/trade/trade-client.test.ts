@@ -118,22 +118,54 @@ describe('TradeClient', () => {
     expect(res.result).toEqual(['x'])
   })
 
-  it('ogni 429 viene segnalato a onRateLimited con endpoint e tentativo', async () => {
+  it('ogni 429 viene segnalato a onRateLimited con endpoint, tentativo e header', async () => {
     const f = makeFetch((_c, n) =>
       n === 1
-        ? json({ error: 'rate' }, 429, { 'Retry-After': '1' })
+        ? json({ error: 'rate' }, 429, {
+            'Retry-After': '1',
+            'X-Rate-Limit-Policy': 'trade-search-request-limit',
+            'X-Rate-Limit-Rules': 'Ip',
+            'X-Rate-Limit-Ip': '10:10:60',
+            'X-Rate-Limit-Ip-State': '6:10:1'
+          })
         : json({ id: 'q', result: [], total: 0 })
     )
     const seen: string[] = []
     const client = new TradeClient({
       userAgent: UA,
       fetchImpl: f.impl,
-      onRateLimited: (kind, attempt) => seen.push(`${kind}:${attempt}`)
+      onRateLimited: (kind, attempt, headers) => seen.push(`${kind}:${attempt} ${headers}`)
     })
     const p = client.search('Standard', {}, 'user')
     await vi.advanceTimersByTimeAsync(1000)
     await p
-    expect(seen).toEqual(['search:1'])
+    expect(seen).toEqual([
+      'search:1 policy=trade-search-request-limit rules=Ip Ip=10:10:60 Ip-State=6:10:1 Retry-After=1'
+    ])
+  })
+
+  it('una risposta non 429 con restrizione attiva va a onRestriction, una normale no', async () => {
+    const f = makeFetch((_c, n) =>
+      json(emptySearch, 200, {
+        'X-Rate-Limit-Policy': 'p',
+        'X-Rate-Limit-Rules': 'Ip',
+        'X-Rate-Limit-Ip': '10:10:60',
+        'X-Rate-Limit-Ip-State': n === 1 ? '1:10:0' : '1:10:5'
+      })
+    )
+    const seen: string[] = []
+    const rateLimited: string[] = []
+    const client = new TradeClient({
+      userAgent: UA,
+      fetchImpl: f.impl,
+      onRestriction: (kind, headers) => seen.push(`${kind} ${headers}`),
+      onRateLimited: (kind) => rateLimited.push(kind)
+    })
+    await client.search('Standard', {}, 'user')
+    expect(seen).toEqual([])
+    await client.search('Standard', {}, 'user')
+    expect(seen).toEqual(['search policy=p rules=Ip Ip=10:10:60 Ip-State=1:10:5 Retry-After=-'])
+    expect(rateLimited).toEqual([])
   })
 
   it('dopo 3 ripetizioni su 429 rifiuta con un errore chiaro', async () => {
@@ -280,6 +312,13 @@ describe('scheduler senza blocco in testa (D1)', () => {
     return l
   }
   const tagOf = (c: Call): string => JSON.parse(String(c.init.body)).tag
+  /** Finestra piena per `sec` secondi (attesa del solo limiter, nessun blocco globale). */
+  const saturated = (sec: number): RateLimiter => {
+    const l = new RateLimiter()
+    l.update(new Headers({ 'X-Rate-Limit-Rules': 'Ip', 'X-Rate-Limit-Ip': `2:${sec}:60` }))
+    l.recordRequest()
+    return l
+  }
 
   it('un job background che attende il limiter fetch non ritarda un job user su search', async () => {
     const f = makeFetch((c) =>
@@ -288,7 +327,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
     const client = new TradeClient({
       userAgent: UA,
       fetchImpl: f.impl,
-      limiters: { fetch: blocked(60) }
+      limiters: { fetch: saturated(60) }
     })
     const bg = client.fetchListings(['a'], 'q', 'background')
     await vi.advanceTimersByTimeAsync(10)
@@ -310,7 +349,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
     const client = new TradeClient({
       userAgent: UA,
       fetchImpl: f.impl,
-      limiters: { fetch: blocked(120) }
+      limiters: { fetch: saturated(120) }
     })
     void client.fetchListings(['a'], 'q', 'background')
     await vi.advanceTimersByTimeAsync(10)
@@ -319,28 +358,69 @@ describe('scheduler senza blocco in testa (D1)', () => {
     expect(await p).toEqual(['Standard'])
   })
 
-  it('un 429 su un job background non blocca un job user su un altro endpoint', async () => {
-    let fetchCalls = 0
+  it('un 429 con Retry-After su search ferma anche fetch e data fino alla scadenza (blocco globale)', async () => {
+    let searchCalls = 0
     const f = makeFetch((c) => {
-      if (c.init.method === 'POST') return json({ id: 'q', result: ['u'], total: 1 })
-      fetchCalls++
-      return fetchCalls === 1
+      if (c.url.includes('/data/leagues'))
+        return json({ result: [{ id: 'Standard', realm: 'poe2' }] })
+      if (c.init.method === 'GET') return json({ result: [{ id: 'a' }] })
+      searchCalls++
+      return searchCalls === 1
         ? json({}, 429, { 'Retry-After': '60' })
-        : json({ result: [{ id: 'a' }] })
+        : json({ id: 'q', result: ['s'], total: 1 })
     })
     const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
-    const bg = client.fetchListings(['a'], 'q', 'background')
+    const s1 = client.search('Standard', {}, 'background')
     await vi.advanceTimersByTimeAsync(10)
     expect(f.calls).toHaveLength(1)
-    const u = client.search('Standard', {}, 'user')
-    await vi.advanceTimersByTimeAsync(10)
-    expect((await u).result).toEqual(['u'])
-    expect(f.calls).toHaveLength(2)
+    expect(client.blockedForMs()).toBeGreaterThan(59_000)
+    const g = client.fetchListings(['a'], 'q', 'user')
+    const l = client.leagues('user')
     await vi.advanceTimersByTimeAsync(59_000)
-    expect(f.calls).toHaveLength(2)
+    expect(f.calls).toHaveLength(1)
     await vi.advanceTimersByTimeAsync(1_000)
-    expect(await bg).toEqual([{ id: 'a' }])
-    expect(f.calls).toHaveLength(3)
+    expect(await g).toEqual([{ id: 'a' }])
+    expect(await l).toEqual(['Standard'])
+    expect((await s1).result).toEqual(['s'])
+    // dopo il blocco: prima i job user, poi il background ripetuto
+    expect(f.calls.map((c) => c.init.method)).toEqual(['POST', 'GET', 'GET', 'POST'])
+  })
+
+  it('una restrizione attiva nello -State di fetch ferma anche search', async () => {
+    const f = makeFetch((c) =>
+      c.init.method === 'GET'
+        ? json({ result: [] }, 200, {
+            'X-Rate-Limit-Rules': 'Ip',
+            'X-Rate-Limit-Ip': '10:10:60',
+            'X-Rate-Limit-Ip-State': '11:10:30'
+          })
+        : json(emptySearch)
+    )
+    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    await client.fetchListings(['a'], 'q', 'user')
+    const s = client.search('Standard', {}, 'user')
+    await vi.advanceTimersByTimeAsync(29_999)
+    expect(f.calls).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    await s
+    expect(f.calls).toHaveLength(2)
+  })
+
+  it('un limiter caricato con un blocco in corso ferma tutta la coda', async () => {
+    const f = makeFetch(() => json({ result: [] }))
+    const client = new TradeClient({
+      userAgent: UA,
+      fetchImpl: f.impl,
+      limiters: { data: blocked(20) }
+    })
+    expect(client.blockedForMs()).toBe(20_000)
+    expect(client.remainingRatio()).toBe(0)
+    const p = client.fetchListings(['a'], 'q', 'user')
+    await vi.advanceTimersByTimeAsync(19_999)
+    expect(f.calls).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(1)
+    await p
+    expect(f.calls).toHaveLength(1)
   })
 
   it('un 429 rimette il job in coda: un job user sullo stesso limiter accodato dopo passa prima', async () => {
@@ -360,7 +440,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
     expect(order).toEqual(['bg', 'user', 'bg'])
   })
 
-  it('429 senza Retry-After: il job ripete dopo 1 s senza bloccare gli altri endpoint', async () => {
+  it('429 senza Retry-After: attesa di sicurezza di 1 s per tutta la coda, poi prima il job user', async () => {
     const f = makeFetch((c, n) => {
       if (c.init.method === 'GET') return json({ result: [] })
       return n === 1 ? json({}, 429) : json({ id: 'q', result: ['x'], total: 1 })
@@ -370,11 +450,11 @@ describe('scheduler senza blocco in testa (D1)', () => {
     await vi.advanceTimersByTimeAsync(10)
     const g = client.fetchListings(['a'], 'q', 'user')
     await vi.advanceTimersByTimeAsync(10)
-    await g
-    expect(f.calls).toHaveLength(2)
+    expect(f.calls).toHaveLength(1)
     await vi.advanceTimersByTimeAsync(1_000)
+    await g
     expect((await s).result).toEqual(['x'])
-    expect(f.calls).toHaveLength(3)
+    expect(f.calls.map((c) => c.init.method)).toEqual(['POST', 'GET', 'POST'])
   })
 
   it('con il limiter bloccato, alla scadenza parte prima il job di priorità più alta (FIFO a parità)', async () => {
@@ -430,7 +510,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
     const client = new TradeClient({
       userAgent: UA,
       fetchImpl: f.impl,
-      limiters: { search: blocked(300) }
+      limiters: { search: saturated(300) }
     })
     void client.search('Standard', {}, 'background')
     await vi.advanceTimersByTimeAsync(1_000)
@@ -536,5 +616,74 @@ describe('annullamento (signal)', () => {
     expect(isAbortError(await err)).toBe(true)
     await vi.advanceTimersByTimeAsync(20_000)
     expect(f.calls).toHaveLength(1)
+  })
+})
+
+describe('budget background (50% di ogni regola)', () => {
+  it('un job background già in coda non parte se supererebbe il 50%; un job user sì', async () => {
+    const order: string[] = []
+    const f = makeFetch((c) => {
+      order.push(JSON.parse(String(c.init.body)).tag)
+      return json(emptySearch, 200, {
+        'X-Rate-Limit-Rules': 'Ip',
+        'X-Rate-Limit-Ip': '4:10:60'
+      })
+    })
+    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    // 4:10 → background al massimo 2 hit nella finestra
+    const ps = [
+      client.search('Standard', { tag: 'b1' }, 'background'),
+      client.search('Standard', { tag: 'b2' }, 'background'),
+      client.search('Standard', { tag: 'b3' }, 'background')
+    ]
+    await vi.advanceTimersByTimeAsync(100)
+    expect(order).toEqual(['b1', 'b2'])
+    const u = client.search('Standard', { tag: 'u' }, 'user')
+    await vi.advanceTimersByTimeAsync(10)
+    await u
+    expect(order).toEqual(['b1', 'b2', 'u'])
+    await vi.advanceTimersByTimeAsync(10_000)
+    await Promise.all(ps)
+    expect(order).toEqual(['b1', 'b2', 'u', 'b3'])
+  })
+})
+
+describe('stato dei limiter', () => {
+  it('blockEndedAgoMs: il blocco più recente tra i limiter', async () => {
+    const f = makeFetch((_c, n) =>
+      n === 1 ? json({}, 429, { 'Retry-After': '10' }) : json({ result: [] })
+    )
+    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    expect(client.blockEndedAgoMs()).toBe(Infinity)
+    const p = client.fetchListings(['a'], 'q', 'user')
+    await vi.advanceTimersByTimeAsync(10)
+    expect(client.blockEndedAgoMs()).toBeLessThan(0)
+    await vi.advanceTimersByTimeAsync(10_000)
+    await p
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(client.blockEndedAgoMs()).toBeGreaterThanOrEqual(5_000)
+  })
+
+  it('onResponse dopo ogni risposta (anche 429); snapshot con lo stato di ogni endpoint', async () => {
+    const f = makeFetch((_c, n) =>
+      n === 1
+        ? json({}, 429, { 'Retry-After': '1' })
+        : json(emptySearch, 200, { 'X-Rate-Limit-Rules': 'Ip', 'X-Rate-Limit-Ip': '8:10:60' })
+    )
+    let responses = 0
+    const client = new TradeClient({
+      userAgent: UA,
+      fetchImpl: f.impl,
+      onResponse: () => responses++
+    })
+    const p = client.search('Standard', {}, 'user')
+    await vi.advanceTimersByTimeAsync(1_000)
+    await p
+    expect(responses).toBe(2)
+    const snap = client.snapshot()
+    expect(Object.keys(snap).sort()).toEqual(['data', 'fetch', 'search'])
+    expect(snap.search.rules).toEqual([{ group: 'Ip', maxHits: 8, periodSec: 10, restrictSec: 60 }])
+    expect(snap.search.requests).toHaveLength(2)
+    expect(snap.fetch.requests).toEqual([])
   })
 })

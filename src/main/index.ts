@@ -241,7 +241,9 @@ async function startServices(): Promise<void> {
   const userAgent = `POEvaluator/${app.getVersion()} (+https://github.com/xellafe/POEvaluator)`
   const client = new TradeClient({
     userAgent,
-    onRateLimited: (kind, attempt) => log(`429 dal trade (${kind}, tentativo ${attempt})`)
+    onRateLimited: (kind, attempt, headers) =>
+      log(`429 dal trade (${kind}, tentativo ${attempt}) ${headers}`),
+    onRestriction: (kind, headers) => log(`restrizione attiva sul trade (${kind}) ${headers}`)
   })
   leagueCache = new LeagueCache({
     path: join(userData, 'leagues.json'),
