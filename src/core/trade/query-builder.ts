@@ -24,6 +24,8 @@ interface StatFilter {
  * (es. -52 con 0.8 -> max -41, cioè meno restrittivo di -52).
  */
 function modFilter(mod: ItemMod, valueFactor: number): StatFilter {
+  // tradeValue 0: nessun limite sul valore (es. semi della raccolta senza dati locali)
+  if (mod.tradeValue === 0) return { id: mod.statId, value: {} }
   const scaled = mod.tradeValue * valueFactor
   return mod.tradeValue < 0
     ? { id: mod.statId, value: { max: Math.ceil(scaled) } }

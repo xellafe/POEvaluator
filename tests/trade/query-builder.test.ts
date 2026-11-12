@@ -104,4 +104,12 @@ describe('buildQuery', () => {
     expect(filters).toContainEqual({ id: EMPTY_PREFIX_STAT_ID, value: { min: 1 } })
     expect(filters).toContainEqual({ id: EMPTY_SUFFIX_STAT_ID, value: { min: 2 } })
   })
+
+  it('tradeValue 0: nessun limite minimo sul valore', () => {
+    const q = buildQuery(boots, {
+      mods: [mod({ statId: 'explicit.stat_1', tradeValue: 0 })],
+      valueFactor: 1
+    }) as Q
+    expect(q.query.stats[0].filters).toEqual([{ id: 'explicit.stat_1', value: {} }])
+  })
 })
