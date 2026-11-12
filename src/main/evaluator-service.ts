@@ -1,6 +1,6 @@
 // Servizio di valutazione del main process. Non importa Electron: riceve le dipendenze (testabile in Vitest).
 import type { ListingStore } from '../core/db/listing-store'
-import type { EvalResult } from '../core/ipc'
+import type { EvalError, EvalResult } from '../core/ipc'
 import { parseItemText } from '../core/parser/parse-item'
 import { makeConverter, type CurrencyRates } from '../core/pricing/currency'
 import type { Settings } from '../core/settings'
@@ -13,14 +13,29 @@ export type { EvalResult }
 
 type FailReason = Extract<ParseResult, { ok: false }>['reason']
 
-export const MESSAGES: Record<FailReason, string> & { tradeError: string } = {
-  empty: 'Nessun oggetto copiato: passa il mouse su un oggetto e riprova',
-  not_poe_item: 'Il testo copiato non è un oggetto di PoE2',
-  unidentified: 'Oggetto non identificato',
-  unsupported_rarity: 'Per ora valuto solo oggetti rari',
-  unsupported_item: 'Tipo di oggetto non ancora supportato',
-  not_advanced: "Copia l'oggetto con il testo avanzato (Ctrl+Alt+C)",
-  tradeError: 'Ricerca sul trade non riuscita: riprova tra poco'
+const CANNOT = 'Impossibile valutare'
+const UNSUPPORTED = 'Oggetto non supportato'
+
+export const MESSAGES: Record<FailReason | 'tradeError', EvalError> = {
+  empty: {
+    title: CANNOT,
+    message: 'Nessun oggetto trovato: tieni il mouse sopra un oggetto e riprova'
+  },
+  not_poe_item: { title: CANNOT, message: 'Il testo copiato non è un oggetto di PoE2' },
+  not_advanced: {
+    title: CANNOT,
+    message: "Serve la descrizione avanzata: copia l'oggetto con Ctrl+Alt+C e riprova"
+  },
+  unidentified: { title: CANNOT, message: "L'oggetto non è identificato" },
+  unsupported_rarity: { title: UNSUPPORTED, message: 'Per ora valuto solo gli oggetti rari' },
+  unsupported_item: {
+    title: UNSUPPORTED,
+    message: 'Questo tipo di oggetto non è ancora supportato'
+  },
+  tradeError: {
+    title: CANNOT,
+    message: 'La ricerca sul trade non è riuscita: riprova tra poco'
+  }
 }
 
 /** Timeout del download dei tassi da poe.ninja. */
@@ -97,7 +112,7 @@ export class EvaluatorService {
 
   quick(text: string): EvalResult {
     const parsed = parseItemText(text)
-    if (!parsed.ok) return { ok: false, message: MESSAGES[parsed.reason] }
+    if (!parsed.ok) return { ok: false, ...MESSAGES[parsed.reason] }
     const valuation = quickEvaluate(
       parsed.item,
       this.deps.store,
@@ -109,7 +124,7 @@ export class EvaluatorService {
 
   async deep(text: string, onProgress: (done: number, total: number) => void): Promise<EvalResult> {
     const parsed = parseItemText(text)
-    if (!parsed.ok) return { ok: false, message: MESSAGES[parsed.reason] }
+    if (!parsed.ok) return { ok: false, ...MESSAGES[parsed.reason] }
     const { client, store, settings, now } = this.deps
     try {
       const valuation = await deepAnalysis(
@@ -120,7 +135,7 @@ export class EvaluatorService {
       return { ok: true, item: parsed.item, valuation }
     } catch (e) {
       this.deps.log?.(`analisi approfondita fallita: ${errMsg(e)}`)
-      return { ok: false, message: MESSAGES.tradeError }
+      return { ok: false, ...MESSAGES.tradeError }
     }
   }
 

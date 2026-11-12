@@ -2,7 +2,7 @@ export interface Settings {
   league: string
   hotkeys: { quick: string; deep: string }
   /** Soglie di valore, in exalted */
-  thresholds: { buono: number; ottimo: number; vendiSubito: number }
+  thresholds: { buono: number; ottimo: number; eccellente: number }
   backgroundCollection: boolean
   maxListingAgeDays: number
 }
@@ -10,7 +10,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   league: 'Standard',
   hotkeys: { quick: 'Alt+D', deep: 'Alt+Shift+D' },
-  thresholds: { buono: 5, ottimo: 50, vendiSubito: 300 },
+  thresholds: { buono: 5, ottimo: 50, eccellente: 300 },
   backgroundCollection: true,
   maxListingAgeDays: 7
 }
@@ -41,7 +41,8 @@ export function mergeSettings(saved: unknown): Settings {
     thresholds: {
       buono: num(thresholds.buono, d.thresholds.buono),
       ottimo: num(thresholds.ottimo, d.thresholds.ottimo),
-      vendiSubito: num(thresholds.vendiSubito, d.thresholds.vendiSubito)
+      // "vendiSubito" è il nome precedente della soglia (settings.json salvati prima della rinomina)
+      eccellente: num(thresholds.eccellente, num(thresholds.vendiSubito, d.thresholds.eccellente))
     },
     backgroundCollection: bool(s.backgroundCollection, d.backgroundCollection),
     maxListingAgeDays: num(s.maxListingAgeDays, d.maxListingAgeDays)

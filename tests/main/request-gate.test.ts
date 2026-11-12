@@ -34,7 +34,10 @@ describe('RequestGate', () => {
       })
     ).toBe('busy')
     expect(secondRan).toBe(false)
-    expect(DEEP_BUSY_MESSAGE).toBe('Analisi già in corso')
+    expect(DEEP_BUSY_MESSAGE).toEqual({
+      title: 'Analisi già in corso',
+      message: 'Attendi che finisca prima di valutare un altro oggetto'
+    })
     d.resolve()
     expect(await first).toBe('ran')
     // finita la prima, la successiva passa

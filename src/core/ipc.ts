@@ -2,8 +2,14 @@
 import type { Settings } from './settings'
 import type { RareItem, Valuation } from './types'
 
+/** Errore mostrato all'utente: titolo breve e spiegazione. */
+export interface EvalError {
+  title: string
+  message: string
+}
+
 export type EvalResult =
-  { ok: true; item: RareItem; valuation: Valuation } | { ok: false; message: string }
+  { ok: true; item: RareItem; valuation: Valuation } | ({ ok: false } & EvalError)
 
 export type ValuationKind = 'quick' | 'deep'
 export type ResultPayload = { kind: ValuationKind } & EvalResult

@@ -1,7 +1,12 @@
 // Arbitraggio delle richieste di valutazione (senza Electron): catture degli appunti in serie,
 // una sola analisi approfondita alla volta, rapide indipendenti dall'approfondita.
 
-export const DEEP_BUSY_MESSAGE = 'Analisi già in corso'
+import type { EvalError } from '../core/ipc'
+
+export const DEEP_BUSY_MESSAGE: EvalError = {
+  title: 'Analisi già in corso',
+  message: 'Attendi che finisca prima di valutare un altro oggetto'
+}
 
 export class RequestGate {
   private captureTail: Promise<unknown> = Promise.resolve()

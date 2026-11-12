@@ -54,7 +54,7 @@ export type ParseResult =
         | 'not_advanced'
     }
 
-export type Verdict = 'pessimo' | 'buono' | 'ottimo' | 'vendi_subito'
+export type Verdict = 'pessimo' | 'buono' | 'ottimo' | 'eccellente'
 export type Confidence = 'alta' | 'media' | 'bassa'
 
 export interface Listing {

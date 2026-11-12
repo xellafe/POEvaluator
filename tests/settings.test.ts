@@ -11,9 +11,20 @@ describe('mergeSettings', () => {
     expect(result.league).toBe('Dawn')
     expect(result.thresholds.buono).toBe(5)
     expect(result.thresholds.ottimo).toBe(50)
-    expect(result.thresholds.vendiSubito).toBe(300)
+    expect(result.thresholds.eccellente).toBe(300)
     expect(result.hotkeys).toEqual({ quick: 'Alt+D', deep: 'Alt+Shift+D' })
     expect(result.backgroundCollection).toBe(true)
     expect(result.maxListingAgeDays).toBe(7)
+  })
+
+  it('migra la vecchia chiave thresholds.vendiSubito in eccellente', () => {
+    expect(mergeSettings({ thresholds: { vendiSubito: 400 } }).thresholds.eccellente).toBe(400)
+    // con entrambe vince la chiave nuova
+    expect(
+      mergeSettings({ thresholds: { vendiSubito: 400, eccellente: 500 } }).thresholds.eccellente
+    ).toBe(500)
+    expect(mergeSettings({ thresholds: { vendiSubito: 400 } }).thresholds).not.toHaveProperty(
+      'vendiSubito'
+    )
   })
 })

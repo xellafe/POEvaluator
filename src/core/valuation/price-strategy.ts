@@ -44,16 +44,17 @@ export function confidenceFor(prices: number[]): Confidence {
 export function verdictFor(estimateExalted: number, t: Settings['thresholds']): Verdict {
   if (estimateExalted < t.buono) return 'pessimo'
   if (estimateExalted < t.ottimo) return 'buono'
-  if (estimateExalted < t.vendiSubito) return 'ottimo'
-  return 'vendi_subito'
+  if (estimateExalted < t.eccellente) return 'ottimo'
+  return 'eccellente'
 }
 
-const EXCEPTIONAL_WARNING = 'Oggetto eccezionale: verifica il prezzo a mano'
+const EXCEPTIONAL_WARNING =
+  'Pochi oggetti simili in vendita: controlla il prezzo sul trade prima di venderlo'
 
 const SUGGESTED_PERCENTILE: Partial<Record<Verdict, number>> = {
   buono: 0.2,
   ottimo: 0.6,
-  vendi_subito: 0.75
+  eccellente: 0.75
 }
 
 export function priceFor(prices: number[], t: Settings['thresholds']): Result {
@@ -61,12 +62,12 @@ export function priceFor(prices: number[], t: Settings['thresholds']): Result {
   if (clean.length < 2) {
     const verdict: Verdict = clean.length === 1 ? verdictFor(clean[0], t) : 'pessimo'
     const warnings = ['Troppo pochi oggetti simili sul mercato']
-    if (verdict === 'vendi_subito') warnings.push(EXCEPTIONAL_WARNING)
+    if (verdict === 'eccellente') warnings.push(EXCEPTIONAL_WARNING)
     return { verdict, confidence: 'bassa', comparablesCount: clean.length, warnings }
   }
   const verdict = verdictFor(percentile(clean, 0.5), t)
   const warnings: string[] = []
-  if (verdict === 'vendi_subito') warnings.push(EXCEPTIONAL_WARNING)
+  if (verdict === 'eccellente') warnings.push(EXCEPTIONAL_WARNING)
   const result: Result = {
     verdict,
     confidence: confidenceFor(clean),

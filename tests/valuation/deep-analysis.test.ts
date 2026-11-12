@@ -282,7 +282,9 @@ describe('deepAnalysis', () => {
     // mod più debole: FIRE_RES (0.5), suffix
     expect(pseudoIdsOf(last)).toEqual([EMPTY_SUFFIX_STAT_ID])
     expect(modIdsOf(last).length).toBe(3)
-    expect(v.warnings).toContain('Oggetti simili con slot liberi valgono di più (~150 ex)')
+    expect(v.warnings).toContain(
+      'Gli oggetti simili con uno slot libero si vendono intorno a 150 ex'
+    )
     // la stima resta quella dei comparabili base
     expect(v.price?.suggested).toBe(100)
   })
@@ -295,7 +297,9 @@ describe('deepAnalysis', () => {
     })
     const v = await deepAnalysis(boots(mods, { openPrefixes: 0, openSuffixes: 0 }), deps(client))
     expect(pseudoIdsOf(searches[searches.length - 1])).toEqual([EMPTY_PREFIX_STAT_ID])
-    expect(v.warnings.some((w) => w.startsWith('Oggetti simili con slot liberi'))).toBe(false)
+    expect(v.warnings.some((w) => w.startsWith('Gli oggetti simili con uno slot libero'))).toBe(
+      false
+    )
   })
 
   it("niente ricerca slot liberi se l'oggetto ha slot liberi", async () => {
@@ -332,7 +336,9 @@ describe('deepAnalysis', () => {
       }),
       deps(client)
     )
-    expect(v.warnings).toContain('Oggetti simili con slot liberi valgono di più (~79 ex)')
+    expect(v.warnings).toContain(
+      'Gli oggetti simili con uno slot libero si vendono intorno a 79 ex'
+    )
   })
 
   it('query finale con un solo mod: nessuna ricerca di contributo', async () => {

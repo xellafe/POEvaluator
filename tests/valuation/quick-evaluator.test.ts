@@ -162,12 +162,12 @@ describe('quickEvaluate', () => {
   it('store vuoto: fallback a pesi, boots vita+velocità alte -> almeno buono, bassa, nessun prezzo', () => {
     const item = boots([mod(MOVE, 30, 30), mod(LIFE, 84, 84), mod(FIRE_RES, 25, 25, 'suffix')])
     const v = quickEvaluate(item, store, DEFAULT_SETTINGS, NOW)
-    expect(['buono', 'ottimo', 'vendi_subito']).toContain(v.verdict)
+    expect(['buono', 'ottimo', 'eccellente']).toContain(v.verdict)
     expect(v.confidence).toBe('bassa')
     expect(v.price).toBeUndefined()
     expect(v.comparablesCount).toBe(0)
     expect(v.warnings).toContain(
-      "Pochi dati locali: verdetto indicativo, usa l'analisi approfondita"
+      "Pochi oggetti simili raccolti: il verdetto è indicativo, usa l'analisi approfondita"
     )
   })
 
@@ -195,7 +195,7 @@ describe('quickEvaluate', () => {
     const v = quickEvaluate(item, store, DEFAULT_SETTINGS, NOW)
     expect(v.warnings).not.toContain('Classe di oggetto senza pesi: verdetto non disponibile')
     expect(v.warnings).toContain(
-      "Pochi dati locali: verdetto indicativo, usa l'analisi approfondita"
+      "Pochi oggetti simili raccolti: il verdetto è indicativo, usa l'analisi approfondita"
     )
   })
 
@@ -220,7 +220,7 @@ describe('quickEvaluate', () => {
     expect(low.confidence).not.toBe('alta')
     expect(high.comparablesCount).toBe(10)
     expect(high.warnings).not.toContain(
-      "Pochi dati locali: verdetto indicativo, usa l'analisi approfondita"
+      "Pochi oggetti simili raccolti: il verdetto è indicativo, usa l'analisi approfondita"
     )
   })
 

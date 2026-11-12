@@ -4,7 +4,13 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { UiohookKey, uIOhook } from 'uiohook-napi'
 import { BackgroundCollector } from '../core/collector/background-collector'
 import { ListingStore } from '../core/db/listing-store'
-import { IPC, type ProgressPayload, type ResultPayload, type SettingsPatch } from '../core/ipc'
+import {
+  IPC,
+  type EvalError,
+  type ProgressPayload,
+  type ResultPayload,
+  type SettingsPatch
+} from '../core/ipc'
 import { initParserData } from '../core/parser/parse-item'
 import { fetchRates } from '../core/pricing/currency'
 import type { Settings } from '../core/settings'
@@ -90,7 +96,10 @@ function registerHotkeys(): void {
   log(`hotkey: rapida ${settings.hotkeys.quick}, approfondita ${settings.hotkeys.deep}`)
 }
 
-const FAILURE_MESSAGE = 'Valutazione non riuscita: riprova'
+const FAILURE_MESSAGE: EvalError = {
+  title: 'Impossibile valutare',
+  message: 'Si è verificato un errore: riprova'
+}
 
 /** Esegue una valutazione; un'eccezione imprevista diventa comunque una risposta al renderer. */
 async function respond(
@@ -102,7 +111,7 @@ async function respond(
     r = await task()
   } catch (e) {
     log(`errore valutazione ${kind}: ${errMsg(e)}`)
-    r = { ok: false, message: FAILURE_MESSAGE }
+    r = { ok: false, ...FAILURE_MESSAGE }
   }
   sendResult(kind, r)
 }
@@ -118,7 +127,7 @@ async function requestDeep(getText: () => Promise<string>): Promise<void> {
       return svc.deep(text, (done, total) => send(IPC.progress, { done, total }))
     })
   )
-  if (outcome === 'busy') sendResult('deep', { ok: false, message: DEEP_BUSY_MESSAGE })
+  if (outcome === 'busy') sendResult('deep', { ok: false, ...DEEP_BUSY_MESSAGE })
 }
 
 const captureItem = (): Promise<string> => gate.capture(copyHoveredItem)

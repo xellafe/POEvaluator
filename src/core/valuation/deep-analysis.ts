@@ -26,7 +26,7 @@ const BASE_FETCH = 20
 const SIDE_FETCH = 10
 
 export const openSlotsWarning = (medianExalted: number): string =>
-  `Oggetti simili con slot liberi valgono di più (~${roundPrice(medianExalted)} ex)`
+  `Gli oggetti simili con uno slot libero si vendono intorno a ${roundPrice(medianExalted)} ex`
 
 /**
  * Mod espliciti per peso decrescente (peso 0 se la stat non è in tabella); a parità il tier

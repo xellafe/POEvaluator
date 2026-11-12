@@ -83,7 +83,7 @@ describe('verdictFor', () => {
     expect(verdictFor(49.99, T)).toBe('buono')
     expect(verdictFor(50, T)).toBe('ottimo')
     expect(verdictFor(299.99, T)).toBe('ottimo')
-    expect(verdictFor(300, T)).toBe('vendi_subito')
+    expect(verdictFor(300, T)).toBe('eccellente')
   })
 })
 
@@ -110,14 +110,14 @@ describe('priceFor', () => {
     })
   })
 
-  it('vendi_subito usa p75 e aggiunge il warning', () => {
+  it('eccellente usa p75 e aggiunge il warning', () => {
     // [400,400,400,400]: tutti i percentili = 400
     expect(priceFor([400, 400, 400, 400], T)).toEqual({
-      verdict: 'vendi_subito',
+      verdict: 'eccellente',
       confidence: 'media',
       price: { suggested: 400, min: 400, max: 400 },
       comparablesCount: 4,
-      warnings: ['Oggetto eccezionale: verifica il prezzo a mano']
+      warnings: ['Pochi oggetti simili in vendita: controlla il prezzo sul trade prima di venderlo']
     })
   })
 
@@ -151,22 +151,24 @@ describe('priceFor', () => {
     })
   })
 
-  it('stima 400 da pochi dati: vendi_subito + warning eccezionale', () => {
+  it('stima 400 da pochi dati: eccellente + warning eccezionale', () => {
     const r = priceFor([380, 420], T)
-    expect(r.verdict).toBe('vendi_subito')
-    expect(r.warnings).toEqual(['Oggetto eccezionale: verifica il prezzo a mano'])
+    expect(r.verdict).toBe('eccellente')
+    expect(r.warnings).toEqual([
+      'Pochi oggetti simili in vendita: controlla il prezzo sul trade prima di venderlo'
+    ])
     // mediana 400; p75 h = 0.75 -> 380 + 0.75·40 = 410
     expect(r.price).toEqual({ suggested: 410, min: 384, max: 416 })
   })
 
-  it('un solo prezzo >= vendiSubito: entrambi i warning, nessun prezzo', () => {
+  it('un solo prezzo >= eccellente: entrambi i warning, nessun prezzo', () => {
     const r = priceFor([400], T)
-    expect(r.verdict).toBe('vendi_subito')
+    expect(r.verdict).toBe('eccellente')
     expect(r.confidence).toBe('bassa')
     expect(r.price).toBeUndefined()
     expect(r.warnings).toEqual([
       'Troppo pochi oggetti simili sul mercato',
-      'Oggetto eccezionale: verifica il prezzo a mano'
+      'Pochi oggetti simili in vendita: controlla il prezzo sul trade prima di venderlo'
     ])
   })
 })

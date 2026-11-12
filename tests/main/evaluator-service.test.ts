@@ -86,8 +86,11 @@ function service(
 describe('EvaluatorService.quick', () => {
   it('testo vuoto: messaggio e nessuna chiamata al client', () => {
     const r = service().quick('')
-    expect(r).toEqual({ ok: false, message: MESSAGES.empty })
-    expect(MESSAGES.empty).toBe('Nessun oggetto copiato: passa il mouse su un oggetto e riprova')
+    expect(r).toEqual({ ok: false, ...MESSAGES.empty })
+    expect(MESSAGES.empty).toEqual({
+      title: 'Impossibile valutare',
+      message: 'Nessun oggetto trovato: tieni il mouse sopra un oggetto e riprova'
+    })
     expect(client.searches + client.fetches).toBe(0)
   })
 
@@ -95,12 +98,31 @@ describe('EvaluatorService.quick', () => {
     const s = service()
     expect(s.quick('ciao')).toEqual({
       ok: false,
+      title: 'Impossibile valutare',
       message: 'Il testo copiato non è un oggetto di PoE2'
     })
-    expect(s.quick(unidentified)).toEqual({ ok: false, message: 'Oggetto non identificato' })
-    expect(s.quick(unique)).toEqual({ ok: false, message: 'Per ora valuto solo oggetti rari' })
-    expect(MESSAGES.unsupported_item).toBe('Tipo di oggetto non ancora supportato')
-    expect(MESSAGES.not_advanced).toBe("Copia l'oggetto con il testo avanzato (Ctrl+Alt+C)")
+    expect(s.quick(unidentified)).toEqual({
+      ok: false,
+      title: 'Impossibile valutare',
+      message: "L'oggetto non è identificato"
+    })
+    expect(s.quick(unique)).toEqual({
+      ok: false,
+      title: 'Oggetto non supportato',
+      message: 'Per ora valuto solo gli oggetti rari'
+    })
+    expect(MESSAGES.unsupported_item).toEqual({
+      title: 'Oggetto non supportato',
+      message: 'Questo tipo di oggetto non è ancora supportato'
+    })
+    expect(MESSAGES.not_advanced).toEqual({
+      title: 'Impossibile valutare',
+      message: "Serve la descrizione avanzata: copia l'oggetto con Ctrl+Alt+C e riprova"
+    })
+    expect(MESSAGES.tradeError).toEqual({
+      title: 'Impossibile valutare',
+      message: 'La ricerca sul trade non è riuscita: riprova tra poco'
+    })
   })
 
   it('raro: ok senza chiamate di rete', () => {
@@ -138,14 +160,14 @@ describe('EvaluatorService.deep', () => {
 
   it('testo non valido: messaggio senza rete', async () => {
     const r = await service().deep('', () => {})
-    expect(r).toEqual({ ok: false, message: MESSAGES.empty })
+    expect(r).toEqual({ ok: false, ...MESSAGES.empty })
     expect(client.searches).toBe(0)
   })
 
   it('errore del trade: ok:false con messaggio', async () => {
     client.fail = true
     const r = await service().deep(rareBoots, () => {})
-    expect(r).toEqual({ ok: false, message: MESSAGES.tradeError })
+    expect(r).toEqual({ ok: false, ...MESSAGES.tradeError })
   })
 })
 

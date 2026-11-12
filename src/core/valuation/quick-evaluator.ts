@@ -11,7 +11,8 @@ export const KNN_K = 10
 /** Peso nella distanza delle feature senza peso di default (incluse `open` e `ilvl`). */
 const UNWEIGHTED = 0.1
 
-export const FEW_DATA_WARNING = "Pochi dati locali: verdetto indicativo, usa l'analisi approfondita"
+export const FEW_DATA_WARNING =
+  "Pochi oggetti simili raccolti: il verdetto è indicativo, usa l'analisi approfondita"
 export const NO_WEIGHTS_WARNING = 'Classe di oggetto senza pesi: verdetto non disponibile'
 
 /**
@@ -109,7 +110,7 @@ function verdictForScore(score: number): Verdict {
   if (score < 0.3) return 'pessimo'
   if (score < 0.6) return 'buono'
   if (score < 0.85) return 'ottimo'
-  return 'vendi_subito'
+  return 'eccellente'
 }
 
 function fallback(item: RareItem, weights: Weights | undefined): Valuation {
