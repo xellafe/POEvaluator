@@ -94,15 +94,19 @@ export function priceFor(prices: number[], t: Settings['thresholds']): Result {
 
 /** Prezzi puliti minimi per dare un verdetto nell'analisi approfondita. */
 export const MIN_PARITY_PRICES = 3
+
+/** IQR minimo (su log) sotto il quale la pulizia non scarta nulla. */
+const MIN_LOG_IQR = Math.log(1.1)
+
 /**
  * Pulizia dei prezzi dell'analisi approfondita: Tukey 1.5×IQR su log(prezzo), con n >= 4, solo
- * verso l'alto (R33): le richieste fuori scala (price fixing, prezzi di prova) si tolgono, i prezzi
- * bassi restano perché sono le inserzioni con cui compete chi vuole vendere subito. Su scala log il
- * criterio è sui rapporti. Con IQR sotto ln(1.1) (prezzi quasi tutti uguali) non scarta nulla: i limiti
- * sarebbero così stretti da togliere prezzi normali. Con 3 prezzi i quartili non hanno senso:
- * nessuna pulizia. Restituisce i prezzi ordinati.
+ * verso l'alto (R33): le richieste fuori scala (price fixing, prezzi di prova) si tolgono, i
+ * prezzi bassi restano perché sono le inserzioni con cui compete chi vuole vendere subito. Su
+ * scala log il criterio è sui rapporti. Con IQR sotto ln(1.1) (prezzi quasi tutti uguali) non
+ * scarta nulla: i limiti sarebbero così stretti da togliere prezzi normali. Con 3 prezzi i
+ * quartili non hanno senso: nessuna pulizia. Restituisce i prezzi ordinati.
+ * Limite noto: con pochi prezzi il p10 dipende quasi solo dal più basso (vedi test).
  */
-const MIN_LOG_IQR = Math.log(1.1)
 
 export function cleanParityPrices(pricesExalted: number[]): number[] {
   const sorted = pricesExalted.filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b)

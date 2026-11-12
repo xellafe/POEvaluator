@@ -633,8 +633,8 @@ describe('deepAnalysis', () => {
   })
 
   it('slot liberi: confronto sullo stesso quantile (10 prezzi equidistanti)', async () => {
-    // base 10..200: 10 equidistanti 10, 30, 50, ..., 200; la pulizia su scala log toglie 10,
-    // p10 = 46. Slot liberi 70..108: 10 equidistanti 70, 74, ..., 108, p10 = 73.6
+    // base 10..200: 10 equidistanti da 10 a 200; la pulizia toglie solo la coda alta (R33),
+    // il 10 resta: p10 ~ 28. Slot liberi 70..108: 10 equidistanti 70, 74, ..., 108, p10 = 73.6
     const { client } = fakeClient((q) =>
       openSlotSearch(q)
         ? { total: 20, prices: range(20, (i) => 70 + i * 2) }

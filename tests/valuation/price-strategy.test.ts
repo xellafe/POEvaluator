@@ -255,6 +255,14 @@ describe('parityPriceFor (analisi approfondita, confronto alla pari)', () => {
     expect(r.price?.suggested).toBe(14)
   })
 
+  it('limite noto (R33): con pochi prezzi un solo prezzo basso trascina il consigliato', () => {
+    const r = parityPriceFor([1, 100, 110, 120, 130], T, { fullMatch: true })
+    expect(r.comparablesCount).toBe(5)
+    // p10 R-7 = 1 + 0.4 · 99 = 40.6 -> Ottimo invece di ~100
+    expect(r.price?.suggested).toBe(41)
+    expect(r.confidence).not.toBe('alta')
+  })
+
   it('pulizia su scala log: toglie i prezzi fuori scala in alto', () => {
     const r = parityPriceFor([10, 11, 12, 13, 14, 15, 5000], T, { fullMatch: true })
     expect(r.comparablesCount).toBe(6)
