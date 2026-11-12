@@ -9,7 +9,14 @@ import { percentile } from '../valuation/price-strategy'
 import { KNN_MIN_LISTINGS } from '../valuation/quick-evaluator'
 
 const MIN_SEED_WEIGHT = 0.5
-const MIN_RATIO = 0.5
+/** La raccolta lavora solo se ogni regola di search e fetch ha almeno il 60% del budget libero. */
+export const MIN_RATIO = 0.6
+/** Intervallo tra i tick della raccolta. */
+export const COLLECT_INTERVAL_MS = 60_000
+/** Al massimo una ricerca della raccolta ogni 60 s, qualunque sia l'intervallo dei tick. */
+export const MIN_SEARCH_INTERVAL_MS = 60_000
+/** Pausa della raccolta oltre la fine di un blocco del trade (429 o restrizione). */
+export const RESTRICTION_COOLDOWN_MS = 15 * 60_000
 const FETCH_COUNT = 20
 const ALL_AGES_DAYS = 3650
 /** Classi richieste dalle valutazioni dell'utente tenute in lista (la più recente prima). */
@@ -40,7 +47,9 @@ export function buildSeeds(): Seed[] {
  * Raccolta in background: a coda idle e budget ampio, una ricerca per tick, per dare dati al kNN
  * del valutatore rapido. Prima le classi richieste dalle valutazioni dell'utente (a turno sulle
  * loro stat seed, finché hanno 2 × KNN_MIN_LISTINGS inserzioni), poi il giro normale sui seed
- * (classe, stat). Ferma durante le analisi approfondite e nei 3 minuti successivi.
+ * (classe, stat). Ferma durante le analisi approfondite e nei 3 minuti successivi, e dopo un 429
+ * o una restrizione del trade fino a 15 minuti oltre la fine del blocco. Al massimo una ricerca
+ * ogni 60 s.
  */
 export class BackgroundCollector {
   private readonly seeds = buildSeeds()
@@ -58,6 +67,8 @@ export class BackgroundCollector {
   /** Analisi approfondite in corso (una annullata può chiudersi dopo l'inizio della successiva). */
   private deepsRunning = 0
   private lastDeepEnd = Number.NEGATIVE_INFINITY
+  /** Istante dell'ultima ricerca della raccolta (ms). */
+  private lastSearchAt = Number.NEGATIVE_INFINITY
 
   constructor(
     private readonly deps: {
@@ -67,6 +78,8 @@ export class BackgroundCollector {
       settings: () => Settings
       now: () => Date
       log?: (msg: string) => void
+      /** Distanza minima tra due ricerche (default MIN_SEARCH_INTERVAL_MS; i test usano 0). */
+      minSearchIntervalMs?: number
     }
   ) {}
 
@@ -144,6 +157,10 @@ export class BackgroundCollector {
         !client.isIdle() ||
         // restrizione del trade attiva: niente raccolta finché non scade (Review Focus 2)
         client.blockedForMs() > 0 ||
+        // dopo un 429 o una restrizione: 15 minuti di margine oltre la fine del blocco
+        client.blockEndedAgoMs() < RESTRICTION_COOLDOWN_MS ||
+        this.deps.now().getTime() - this.lastSearchAt <
+          (this.deps.minSearchIntervalMs ?? MIN_SEARCH_INTERVAL_MS) ||
         client.remainingRatio() < MIN_RATIO ||
         // senza tassi tutte le inserzioni verrebbero scartate: budget sprecato
         toExalted(1, 'exalted') === null ||
@@ -151,7 +168,9 @@ export class BackgroundCollector {
       ) {
         return 'skipped'
       }
-      await this.collect(this.nextSeed(s.league), s.league)
+      const seed = this.nextSeed(s.league)
+      this.lastSearchAt = this.deps.now().getTime()
+      await this.collect(seed, s.league)
       return 'collected'
     } catch (e) {
       this.deps.log?.(
@@ -162,7 +181,7 @@ export class BackgroundCollector {
   }
 
   /** Un tick ogni `intervalMs`, a partire da `startupDelayMs` dopo la chiamata (avvio dell'app). */
-  start(intervalMs = 20000, startupDelayMs = STARTUP_DELAY_MS): void {
+  start(intervalMs = COLLECT_INTERVAL_MS, startupDelayMs = STARTUP_DELAY_MS): void {
     if (this.timer || this.startTimer) return
     const loop = (): void => {
       this.startTimer = null

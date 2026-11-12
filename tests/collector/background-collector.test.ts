@@ -4,8 +4,12 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   BackgroundCollector,
   buildSeeds,
+  COLLECT_INTERVAL_MS,
   DEEP_COOLDOWN_MS,
   MAX_REQUESTED_CLASSES,
+  MIN_RATIO,
+  MIN_SEARCH_INTERVAL_MS,
+  RESTRICTION_COOLDOWN_MS,
   STARTUP_DELAY_MS
 } from '../../src/core/collector/background-collector'
 import { ListingStore } from '../../src/core/db/listing-store'
@@ -35,6 +39,8 @@ interface FakeClient {
   idle: boolean
   ratio: number
   blocked: number
+  /** Millisecondi dalla fine dell'ultimo blocco (Infinity: mai bloccato). */
+  sinceBlock: number
   total: number
   searches: { league: string; query: Q; priority: string }[]
   fetches: { ids: string[]; queryId: string; priority: string }[]
@@ -42,17 +48,25 @@ interface FakeClient {
   isIdle(): boolean
   remainingRatio(): number
   blockedForMs(): number
+  blockEndedAgoMs(): number
   search(league: string, query: object, priority: string): Promise<unknown>
   fetchListings(ids: string[], queryId: string, priority: string): Promise<unknown[]>
 }
 
 function makeClient(
-  over: Partial<{ idle: boolean; ratio: number; blocked: number; total: number }> = {}
+  over: Partial<{
+    idle: boolean
+    ratio: number
+    blocked: number
+    sinceBlock: number
+    total: number
+  }> = {}
 ): FakeClient {
   const c: FakeClient = {
     idle: over.idle ?? true,
     ratio: over.ratio ?? 1,
     blocked: over.blocked ?? 0,
+    sinceBlock: over.sinceBlock ?? Infinity,
     total: over.total ?? 30,
     searches: [],
     fetches: [],
@@ -65,6 +79,9 @@ function makeClient(
     },
     blockedForMs() {
       return this.blocked
+    },
+    blockEndedAgoMs() {
+      return this.sinceBlock
     },
     async search(league: string, query: object, priority: string) {
       this.searches.push({ league, query, priority })
@@ -92,6 +109,8 @@ function setup(
     settings?: Partial<Settings>
     toExalted?: (a: number, c: string) => number | null
     now?: () => Date
+    /** Default 0 nei test: tick consecutivi con lo stesso `now` non vengono saltati. */
+    minSearchIntervalMs?: number
   } = {}
 ): {
   client: FakeClient
@@ -111,7 +130,8 @@ function setup(
     toExalted: opts.toExalted ?? toExalted,
     settings: () => settings,
     now: opts.now ?? (() => now),
-    log
+    log,
+    minSearchIntervalMs: opts.minSearchIntervalMs ?? 0
   })
   return { client, store, settings, collector, log }
 }
@@ -151,6 +171,40 @@ describe('BackgroundCollector.tick', () => {
     const { client, collector } = setup({ client: makeClient({ ratio: 0.3 }) })
     expect(await collector.tick()).toBe('skipped')
     expect(client.searches).toHaveLength(0)
+  })
+
+  it('lavora solo con almeno il 60% del budget libero', async () => {
+    expect(MIN_RATIO).toBe(0.6)
+    const low = setup({ client: makeClient({ ratio: 0.55 }) })
+    expect(await low.collector.tick()).toBe('skipped')
+    expect(low.client.searches).toHaveLength(0)
+    const ok = setup({ client: makeClient({ ratio: 0.6 }) })
+    expect(await ok.collector.tick()).toBe('collected')
+  })
+
+  it('dopo un 429 o una restrizione resta ferma 15 minuti oltre la fine del blocco', async () => {
+    expect(RESTRICTION_COOLDOWN_MS).toBe(15 * 60_000)
+    const client = makeClient({ sinceBlock: RESTRICTION_COOLDOWN_MS - 1 })
+    const { collector } = setup({ client })
+    expect(await collector.tick()).toBe('skipped')
+    expect(client.searches).toHaveLength(0)
+    client.sinceBlock = RESTRICTION_COOLDOWN_MS
+    expect(await collector.tick()).toBe('collected')
+  })
+
+  it('al massimo una ricerca ogni 60 s, anche con tick più frequenti', async () => {
+    let t = now.getTime()
+    expect(MIN_SEARCH_INTERVAL_MS).toBe(60_000)
+    const { client, collector } = setup({
+      now: () => new Date(t),
+      minSearchIntervalMs: MIN_SEARCH_INTERVAL_MS
+    })
+    expect(await collector.tick()).toBe('collected')
+    t += 59_999
+    expect(await collector.tick()).toBe('skipped')
+    t += 1
+    expect(await collector.tick()).toBe('collected')
+    expect(client.searches).toHaveLength(2)
   })
 
   it('salta durante una restrizione del trade (Review Focus 2), anche con ratio pieno', async () => {
@@ -457,18 +511,21 @@ describe('BackgroundCollector: pausa per le analisi approfondite', () => {
     expect(await collector.tick()).toBe('collected')
   })
 
-  it("start: nessun tick prima di 60 s dall'avvio", async () => {
+  it("start: nessun tick prima di 60 s dall'avvio, poi uno ogni 60 s", async () => {
     vi.useFakeTimers()
     expect(STARTUP_DELAY_MS).toBe(60_000)
+    expect(COLLECT_INTERVAL_MS).toBe(60_000)
     const { client, collector } = setup()
-    collector.start(20_000)
-    await vi.advanceTimersByTimeAsync(STARTUP_DELAY_MS - 1)
+    collector.start()
+    await vi.advanceTimersByTimeAsync(STARTUP_DELAY_MS + COLLECT_INTERVAL_MS - 1)
     expect(client.searches).toHaveLength(0)
-    await vi.advanceTimersByTimeAsync(20_001)
+    await vi.advanceTimersByTimeAsync(1)
     expect(client.searches).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(COLLECT_INTERVAL_MS)
+    expect(client.searches).toHaveLength(2)
     collector.stop()
     await vi.advanceTimersByTimeAsync(100_000)
-    expect(client.searches).toHaveLength(1)
+    expect(client.searches).toHaveLength(2)
   })
 
   it('stop prima della fine del ritardo iniziale: nessun tick', async () => {
