@@ -65,6 +65,8 @@ const exaltedPerDivine = (): number | null => service?.toExalted(1, 'divine') ??
 
 function sendResult(kind: ResultPayload['kind'], r: EvalResult, busy = false): void {
   log(`${kind}: ${JSON.stringify(r.ok ? r.valuation : r.message)}`)
+  // classe con pochi dati: la raccolta in background la serve per prima
+  if (r.ok) collector?.noteValuation(r.item.itemClass)
   send(IPC.result, {
     kind,
     exaltedPerDivine: exaltedPerDivine(),
@@ -132,6 +134,7 @@ async function requestDeep(getText: () => Promise<string>): Promise<void> {
         // la stima rapida (locale) apre subito il pannello; errori di lettura escono qui
         const quick = svc.quick(text)
         if (!quick.ok) return quick
+        collector?.noteValuation(quick.item.itemClass)
         // tassi mancanti o trade in pausa: errore subito, senza aprire il pannello
         const unavailable = svc.deepUnavailable(text)
         if (unavailable) return { ok: false, ...unavailable }
@@ -141,13 +144,19 @@ async function requestDeep(getText: () => Promise<string>): Promise<void> {
           exaltedPerDivine: exaltedPerDivine(),
           totalSearches: DEFAULT_MAX_SEARCHES
         })
-        return svc.deep(
-          text,
-          (done, total) => {
-            if (!signal.aborted) send(IPC.progress, { done, total })
-          },
-          signal
-        )
+        // raccolta in background ferma durante l'analisi (e per 3 minuti dopo)
+        collector?.deepStarted()
+        try {
+          return await svc.deep(
+            text,
+            (done, total) => {
+              if (!signal.aborted) send(IPC.progress, { done, total })
+            },
+            signal
+          )
+        } finally {
+          collector?.deepEnded()
+        }
       },
       signal
     )

@@ -1,12 +1,19 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { BackgroundCollector, buildSeeds } from '../../src/core/collector/background-collector'
+import {
+  BackgroundCollector,
+  buildSeeds,
+  DEEP_COOLDOWN_MS,
+  MAX_REQUESTED_CLASSES,
+  STARTUP_DELAY_MS
+} from '../../src/core/collector/background-collector'
 import { ListingStore } from '../../src/core/db/listing-store'
 import { initParserData } from '../../src/core/parser/parse-item'
 import { DEFAULT_SETTINGS, type Settings } from '../../src/core/settings'
 import type { Listing } from '../../src/core/types'
 import { DEFAULT_WEIGHTS } from '../../src/core/valuation/features'
+import { KNN_MIN_LISTINGS } from '../../src/core/valuation/quick-evaluator'
 
 const fixture = JSON.parse(
   readFileSync(new URL('../fixtures/trade/fetch-response.json', import.meta.url), 'utf8')
@@ -84,6 +91,7 @@ function setup(
     client?: FakeClient
     settings?: Partial<Settings>
     toExalted?: (a: number, c: string) => number | null
+    now?: () => Date
   } = {}
 ): {
   client: FakeClient
@@ -102,7 +110,7 @@ function setup(
     store,
     toExalted: opts.toExalted ?? toExalted,
     settings: () => settings,
-    now: () => now,
+    now: opts.now ?? (() => now),
     log
   })
   return { client, store, settings, collector, log }
@@ -219,11 +227,11 @@ describe('BackgroundCollector.tick', () => {
     ])
   })
 
-  it('senza dati locali: nessun limite minimo sul valore, ordine per prezzo crescente', async () => {
+  it('senza dati locali: nessun limite minimo sul valore, inserzioni più recenti prima (R28)', async () => {
     const { client, collector } = setup()
     await collector.tick()
     expect(client.searches[0].query.query.stats[0].filters[0].value).toEqual({})
-    expect(client.searches[0].query.sort).toEqual({ price: 'asc' })
+    expect(client.searches[0].query.sort).toEqual({ indexed: 'desc' })
   })
 
   it('con dati locali: soglia = floor(0.5 * p95 di |valore|) della stat', async () => {
@@ -274,8 +282,8 @@ describe('BackgroundCollector.start/stop', () => {
   it('un tick a ogni intervallo, start doppio non crea due loop, stop li ferma', async () => {
     vi.useFakeTimers()
     const { client, collector } = setup()
-    collector.start(1000)
-    collector.start(1000)
+    collector.start(1000, 0)
+    collector.start(1000, 0)
     await vi.advanceTimersByTimeAsync(1000)
     expect(client.searches).toHaveLength(1)
     await vi.advanceTimersByTimeAsync(1000)
@@ -296,11 +304,166 @@ describe('BackgroundCollector.start/stop', () => {
       return orig(l, q, p)
     }
     const { collector } = setup({ client })
-    collector.start(1000)
+    collector.start(1000, 0)
     await vi.advanceTimersByTimeAsync(3500)
     release()
     await vi.advanceTimersByTimeAsync(0)
     expect(client.searches).toHaveLength(1)
     collector.stop()
+  })
+})
+
+/** Inserzioni finte di una classe (per i conteggi della league). */
+function fill(store: ListingStore, itemClass: string, n: number, league = 'Standard'): void {
+  store.upsert(
+    Array.from({ length: n }, (_, i): Listing => ({
+      id: `${league}-${itemClass}-${i}`,
+      league,
+      itemClass,
+      baseType: 'x',
+      itemLevel: 80,
+      mods: [],
+      openPrefixes: 0,
+      openSuffixes: 0,
+      priceAmount: 1,
+      priceCurrency: 'exalted',
+      priceExalted: 1,
+      indexedAt: now.toISOString(),
+      seenAt: now.toISOString()
+    }))
+  )
+}
+
+describe('BackgroundCollector: classi richieste', () => {
+  const seeds = buildSeeds()
+  const classes = [...new Set(seeds.map((s) => s.itemClass))]
+  const seedsOf = (c: string): string[] =>
+    seeds.filter((s) => s.itemClass === c).map((s) => s.statId)
+  // una classe lontana dall'inizio del giro normale
+  const target = classes[classes.length - 1]
+
+  it('una classe con meno di KNN_MIN_LISTINGS inserzioni viene servita per prima, a turno sulle sue stat', async () => {
+    const { client, store, collector } = setup()
+    fill(store, target, KNN_MIN_LISTINGS - 1)
+    collector.noteValuation(target)
+    const n = seedsOf(target).length + 1
+    for (let i = 0; i < n; i++) await collector.tick()
+    for (let i = 0; i < n; i++) expect(classOf(client, i)).toBe(target)
+    // tutti gli id della query (le stat con più id stanno in un gruppo "count")
+    const idsOf = (i: number): string[] =>
+      client.searches[i].query.query.stats.flatMap((g: Q) => g.filters.map((f: Q) => f.id))
+    const expected = [...seedsOf(target), seedsOf(target)[0]]
+    expected.forEach((statId, i) => expect(idsOf(i)).toContain(statId))
+  })
+
+  it('con almeno KNN_MIN_LISTINGS inserzioni la classe non viene richiesta', async () => {
+    const { client, store, collector } = setup()
+    fill(store, target, KNN_MIN_LISTINGS)
+    collector.noteValuation(target)
+    await collector.tick()
+    expect(classOf(client, 0)).toBe(seeds[0].itemClass)
+  })
+
+  it('il conteggio è quello della league corrente', async () => {
+    const { client, store, collector } = setup()
+    fill(store, target, 100, 'Altra')
+    collector.noteValuation(target)
+    await collector.tick()
+    expect(classOf(client, 0)).toBe(target)
+  })
+
+  it('arrivata a 2 × KNN_MIN_LISTINGS la classe esce e si torna al giro normale', async () => {
+    const { client, store, collector } = setup()
+    fill(store, target, 10)
+    collector.noteValuation(target)
+    await collector.tick()
+    expect(classOf(client, 0)).toBe(target)
+    fill(store, target, 2 * KNN_MIN_LISTINGS)
+    await collector.tick()
+    expect([classOf(client, 1), statOf(client, 1)]).toEqual([seeds[0].itemClass, seeds[0].statId])
+  })
+
+  it('più classi richieste: servite a turno, la più recente prima; al massimo 5', async () => {
+    expect(MAX_REQUESTED_CLASSES).toBe(5)
+    const { client, collector } = setup()
+    const req = classes.slice(0, 6)
+    for (const c of req) collector.noteValuation(c)
+    for (let i = 0; i < 6; i++) await collector.tick()
+    // le 5 più recenti, dalla più recente; la prima richiesta è uscita
+    const recent = [...req].reverse().slice(0, 5)
+    expect(client.searches.slice(0, 5).map((_, i) => classOf(client, i))).toEqual(recent)
+    expect(classOf(client, 5)).toBe(recent[0])
+  })
+
+  it('una classe richiesta di nuovo torna in testa', async () => {
+    const { client, collector } = setup()
+    collector.noteValuation(classes[0])
+    collector.noteValuation(classes[1])
+    collector.noteValuation(classes[0])
+    await collector.tick()
+    await collector.tick()
+    await collector.tick()
+    expect([0, 1, 2].map((i) => classOf(client, i))).toEqual([classes[0], classes[1], classes[0]])
+  })
+
+  it('classi senza pesi (nessun seed) vengono ignorate', async () => {
+    const { client, collector } = setup()
+    collector.noteValuation('flask')
+    await collector.tick()
+    expect(classOf(client, 0)).toBe(seeds[0].itemClass)
+  })
+})
+
+describe('BackgroundCollector: pausa per le analisi approfondite', () => {
+  it('non lavora durante una deep né nei 3 minuti dopo la fine', async () => {
+    let t = now.getTime()
+    const { client, collector } = setup({ now: () => new Date(t) })
+    collector.deepStarted()
+    expect(await collector.tick()).toBe('skipped')
+    t += 10 * 60_000
+    expect(await collector.tick()).toBe('skipped') // ancora in corso
+    collector.deepEnded()
+    t += DEEP_COOLDOWN_MS - 1
+    expect(await collector.tick()).toBe('skipped')
+    t += 1
+    expect(await collector.tick()).toBe('collected')
+    expect(client.searches).toHaveLength(1)
+    expect(DEEP_COOLDOWN_MS).toBe(3 * 60_000)
+  })
+
+  it('due deep sovrapposte (una annullata): la pausa dura finché finiscono entrambe', async () => {
+    let t = now.getTime()
+    const { collector } = setup({ now: () => new Date(t) })
+    collector.deepStarted()
+    collector.deepStarted()
+    collector.deepEnded()
+    t += DEEP_COOLDOWN_MS
+    expect(await collector.tick()).toBe('skipped')
+    collector.deepEnded()
+    t += DEEP_COOLDOWN_MS
+    expect(await collector.tick()).toBe('collected')
+  })
+
+  it("start: nessun tick prima di 60 s dall'avvio", async () => {
+    vi.useFakeTimers()
+    expect(STARTUP_DELAY_MS).toBe(60_000)
+    const { client, collector } = setup()
+    collector.start(20_000)
+    await vi.advanceTimersByTimeAsync(STARTUP_DELAY_MS - 1)
+    expect(client.searches).toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(20_001)
+    expect(client.searches).toHaveLength(1)
+    collector.stop()
+    await vi.advanceTimersByTimeAsync(100_000)
+    expect(client.searches).toHaveLength(1)
+  })
+
+  it('stop prima della fine del ritardo iniziale: nessun tick', async () => {
+    vi.useFakeTimers()
+    const { client, collector } = setup()
+    collector.start(1000)
+    collector.stop()
+    await vi.advanceTimersByTimeAsync(STARTUP_DELAY_MS + 5000)
+    expect(client.searches).toHaveLength(0)
   })
 })

@@ -6,11 +6,18 @@ import { buildQuery } from '../trade/query-builder'
 import type { Listing, RareItem } from '../types'
 import { DEFAULT_WEIGHTS } from '../valuation/features'
 import { percentile } from '../valuation/price-strategy'
+import { KNN_MIN_LISTINGS } from '../valuation/quick-evaluator'
 
 const MIN_SEED_WEIGHT = 0.5
 const MIN_RATIO = 0.5
 const FETCH_COUNT = 20
 const ALL_AGES_DAYS = 3650
+/** Classi richieste dalle valutazioni dell'utente tenute in lista (la più recente prima). */
+export const MAX_REQUESTED_CLASSES = 5
+/** Pausa della raccolta dopo la fine di un'analisi approfondita (il budget serve all'utente). */
+export const DEEP_COOLDOWN_MS = 3 * 60_000
+/** Nessuna raccolta nel primo minuto dopo l'avvio dell'app. */
+export const STARTUP_DELAY_MS = 60_000
 
 export interface Seed {
   itemClass: string
@@ -30,14 +37,25 @@ export function buildSeeds(): Seed[] {
 }
 
 /**
- * Raccolta in background: a coda idle e budget ampio, una ricerca per tick su un seed
- * (classe, stat) a round robin, per dare dati al kNN del valutatore rapido.
+ * Raccolta in background: a coda idle e budget ampio, una ricerca per tick, per dare dati al kNN
+ * del valutatore rapido. Prima le classi richieste dalle valutazioni dell'utente (a turno sulle
+ * loro stat seed, finché hanno 2 × KNN_MIN_LISTINGS inserzioni), poi il giro normale sui seed
+ * (classe, stat). Ferma durante le analisi approfondite e nei 3 minuti successivi.
  */
 export class BackgroundCollector {
   private readonly seeds = buildSeeds()
   private cursor = 0
   private timer: ReturnType<typeof setInterval> | null = null
+  private startTimer: ReturnType<typeof setTimeout> | null = null
   private running = false
+  /** Classi con pochi dati valutate di recente, la più recente prima. */
+  private requested: string[] = []
+  /** Turno tra le classi richieste e prossimo seed di ciascuna. */
+  private requestedTurn = 0
+  private readonly requestedCursor = new Map<string, number>()
+  /** Analisi approfondite in corso (una annullata può chiudersi dopo l'inizio della successiva). */
+  private deepsRunning = 0
+  private lastDeepEnd = Number.NEGATIVE_INFINITY
 
   constructor(
     private readonly deps: {
@@ -50,12 +68,66 @@ export class BackgroundCollector {
     }
   ) {}
 
+  /**
+   * Una valutazione (rapida o approfondita) ha riguardato `itemClass`: se nella league corrente
+   * ha meno di KNN_MIN_LISTINGS inserzioni va in testa alle classi richieste.
+   */
+  noteValuation(itemClass: string): void {
+    try {
+      if (!this.seeds.some((s) => s.itemClass === itemClass)) return
+      const count = this.deps.store.countByClass(this.deps.settings().league)[itemClass] ?? 0
+      if (count >= KNN_MIN_LISTINGS) return
+      this.requested = [itemClass, ...this.requested.filter((c) => c !== itemClass)].slice(
+        0,
+        MAX_REQUESTED_CLASSES
+      )
+      this.requestedTurn = 0 // si riparte dalla più recente
+    } catch (e) {
+      this.deps.log?.(`classe richiesta non registrata: ${e instanceof Error ? e.message : e}`)
+    }
+  }
+
+  /** Inizio di un'analisi approfondita: la raccolta si ferma. */
+  deepStarted(): void {
+    this.deepsRunning++
+  }
+
+  /** Fine (o annullamento) di un'analisi approfondita: la raccolta riprende dopo 3 minuti. */
+  deepEnded(): void {
+    this.deepsRunning = Math.max(0, this.deepsRunning - 1)
+    this.lastDeepEnd = this.deps.now().getTime()
+  }
+
+  private pausedForDeep(): boolean {
+    return this.deepsRunning > 0 || this.deps.now().getTime() - this.lastDeepEnd < DEEP_COOLDOWN_MS
+  }
+
+  /** Prossimo seed: prima le classi richieste ancora sotto 2 × KNN_MIN_LISTINGS, poi il giro normale. */
+  private nextSeed(league: string): Seed {
+    if (this.requested.length > 0) {
+      const counts = this.deps.store.countByClass(league)
+      this.requested = this.requested.filter((c) => (counts[c] ?? 0) < 2 * KNN_MIN_LISTINGS)
+    }
+    if (this.requested.length > 0) {
+      const itemClass = this.requested[this.requestedTurn % this.requested.length]
+      this.requestedTurn++
+      const own = this.seeds.filter((s) => s.itemClass === itemClass)
+      const i = this.requestedCursor.get(itemClass) ?? 0
+      this.requestedCursor.set(itemClass, (i + 1) % own.length)
+      return own[i % own.length]
+    }
+    const seed = this.seeds[this.cursor]
+    this.cursor = (this.cursor + 1) % this.seeds.length
+    return seed
+  }
+
   async tick(): Promise<'collected' | 'skipped'> {
     const { client, settings, toExalted } = this.deps
     try {
       const s = settings()
       if (
         !s.backgroundCollection ||
+        this.pausedForDeep() ||
         !client.isIdle() ||
         // restrizione del trade attiva: niente raccolta finché non scade (Review Focus 2)
         client.blockedForMs() > 0 ||
@@ -66,9 +138,7 @@ export class BackgroundCollector {
       ) {
         return 'skipped'
       }
-      const seed = this.seeds[this.cursor]
-      this.cursor = (this.cursor + 1) % this.seeds.length
-      await this.collect(seed, s.league)
+      await this.collect(this.nextSeed(s.league), s.league)
       return 'collected'
     } catch (e) {
       this.deps.log?.(
@@ -78,19 +148,27 @@ export class BackgroundCollector {
     }
   }
 
-  start(intervalMs = 20000): void {
-    if (this.timer) return
-    this.timer = setInterval(() => {
-      if (this.running) return
-      this.running = true
-      void this.tick().finally(() => {
-        this.running = false
-      })
-    }, intervalMs)
+  /** Un tick ogni `intervalMs`, a partire da `startupDelayMs` dopo la chiamata (avvio dell'app). */
+  start(intervalMs = 20000, startupDelayMs = STARTUP_DELAY_MS): void {
+    if (this.timer || this.startTimer) return
+    const loop = (): void => {
+      this.startTimer = null
+      this.timer = setInterval(() => {
+        if (this.running) return
+        this.running = true
+        void this.tick().finally(() => {
+          this.running = false
+        })
+      }, intervalMs)
+    }
+    if (startupDelayMs > 0) this.startTimer = setTimeout(loop, startupDelayMs)
+    else loop()
   }
 
   stop(): void {
+    if (this.startTimer) clearTimeout(this.startTimer)
     if (this.timer) clearInterval(this.timer)
+    this.startTimer = null
     this.timer = null
   }
 
@@ -134,7 +212,8 @@ export class BackgroundCollector {
       openPrefixes: 0,
       openSuffixes: 0
     }
-    const query = buildQuery(item, { mods: item.explicits, valueFactor: 1 })
+    // inserzioni più recenti prima: a ogni giro dati nuovi, non sempre le più economiche (R28)
+    const query = buildQuery(item, { mods: item.explicits, valueFactor: 1, sort: 'indexed' })
     const res = await client.search(league, query, 'background')
     if (res.total === 0 || res.result.length === 0) return
     const raws = await client.fetchListings(res.result.slice(0, FETCH_COUNT), res.id, 'background')

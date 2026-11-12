@@ -73,6 +73,13 @@ describe('buildQuery', () => {
     expect(q.sort).toEqual({ price: 'asc' })
   })
 
+  it("sort 'indexed': inserzioni più recenti prima; 'price' esplicito come il default", () => {
+    const recent = buildQuery(boots, { mods: [vita], valueFactor: 1, sort: 'indexed' }) as Q
+    expect(recent.sort).toEqual({ indexed: 'desc' })
+    const byPrice = buildQuery(boots, { mods: [vita], valueFactor: 1, sort: 'price' }) as Q
+    expect(byPrice.sort).toEqual({ price: 'asc' })
+  })
+
   it('con tradeValue negativo usa max (arrotondato verso zero) invece di min', () => {
     const neg = mod({ statId: 'explicit.stat_1', tradeValue: -52 })
     const q = buildQuery(boots, { mods: [neg], valueFactor: 0.8 }) as Q

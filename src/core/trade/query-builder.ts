@@ -11,6 +11,11 @@ export interface QueryOptions {
   valueFactor: number
   minOpenPrefixes?: number
   minOpenSuffixes?: number
+  /**
+   * Ordinamento dei risultati: 'price' (default) dal più economico, 'indexed' dalle inserzioni
+   * più recenti (raccolta in background: dati nuovi a ogni giro, non sempre gli stessi).
+   */
+  sort?: 'price' | 'indexed'
 }
 
 interface StatFilter {
@@ -78,6 +83,6 @@ export function buildQuery(item: RareItem, opts: QueryOptions): object {
         }
       }
     },
-    sort: { price: 'asc' }
+    sort: opts.sort === 'indexed' ? { indexed: 'desc' } : { price: 'asc' }
   }
 }
