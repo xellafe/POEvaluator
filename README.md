@@ -37,6 +37,8 @@ Hotkeys only work while Path of Exile 2 is the foreground window. Clicking the b
 
 With *background collection* enabled (default), the app slowly downloads listings for the most common item classes while you play, so the quick verdict becomes more accurate over time.
 
+Rate limits: manual searches on the trade website made at the same time count against the same limit as POEvaluator, so they can pause the app (and vice versa).
+
 Prices are shown in exalted orbs; from 1 divine upwards they are shown in divines with the exalted value in brackets. Exchange rates come from [poe.ninja](https://poe.ninja).
 
 ## Terms of Service
