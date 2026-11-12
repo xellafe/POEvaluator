@@ -95,8 +95,11 @@ export interface Valuation {
    */
   verdict: Verdict | null
   confidence: Confidence
-  /** exalted */
-  price?: { suggested: number; min: number; max: number }
+  /**
+   * exalted. `patient` (solo analisi approfondita, R32): prezzo "se puoi aspettare", presente
+   * solo per Ottimo ed Eccellente quando supera il consigliato di almeno il 20%.
+   */
+  price?: { suggested: number; min: number; max: number; patient?: number }
   contributions?: { statId: string; text: string; deltaExalted: number }[]
   comparablesCount: number
   tradeUrl?: string

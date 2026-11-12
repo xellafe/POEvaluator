@@ -196,10 +196,11 @@ export function parityQueryOptions(
     collapse: true
   }
   if (plan.dps) {
-    opts.dps = {
-      pdps: Math.floor(plan.dps.pdps * dpsFactor),
-      edps: Math.floor(plan.dps.edps * dpsFactor)
-    }
+    // stesso criterio di dpsCoverage: un danno sotto DPS_EPSILON non ha filtro; se c'è, il
+    // filtro vale almeno 1 (floor(1.1 × 0.85) = 0 non filtrerebbe nulla)
+    const min = (v: number): number =>
+      v >= DPS_EPSILON ? Math.max(1, Math.floor(v * dpsFactor)) : 0
+    opts.dps = { pdps: min(plan.dps.pdps), edps: min(plan.dps.edps) }
   }
   if (step.openSlotSide === 'prefix') opts.minOpenPrefixes = 1
   else if (plan.maxOpenPrefixes !== undefined) opts.maxOpenPrefixes = plan.maxOpenPrefixes
@@ -224,24 +225,27 @@ export function parityQuery(
  * campione dello stesso quantile qualunque sia il numero di risultati.
  */
 export function spreadSample<T>(items: readonly T[], n: number, cap = SAMPLE_CAP): T[] {
+  if (n <= 0) return []
+  if (n === 1) return items.slice(0, 1)
   const m = Math.min(items.length, cap)
   if (m <= n) return items.slice(0, m)
   return Array.from({ length: n }, (_, i) => items[Math.round((i * (m - 1)) / (n - 1))])
 }
 
 /**
- * 25° percentile di un campione di SIDE_FETCH prezzi equidistanti (dopo la pulizia); null se ne
- * restano meno di 3. Il campione base (20 prezzi) si riduce a 10 equidistanti, così base e
- * ricerche secondarie hanno la stessa granularità.
+ * 10° percentile (lo stesso punto del mercato del prezzo consigliato, R32) di un campione di
+ * SIDE_FETCH prezzi equidistanti, dopo la pulizia; null se ne restano meno di 3. Il campione
+ * base (20 prezzi) si riduce a 10 equidistanti, così base e ricerche secondarie hanno la stessa
+ * granularità.
  */
-function sampleP25(prices: number[]): number | null {
+function sampleP10(prices: number[]): number | null {
   const sample = spreadSample(
     [...prices].sort((a, b) => a - b),
     SIDE_FETCH,
     Number.POSITIVE_INFINITY
   )
   const clean = cleanParityPrices(sample)
-  return clean.length >= MIN_PARITY_PRICES ? percentile(clean, 0.25) : null
+  return clean.length >= MIN_PARITY_PRICES ? percentile(clean, 0.1) : null
 }
 
 /**
@@ -250,9 +254,9 @@ function sampleP25(prices: number[]): number | null {
  *    collapse; se total < 5: mod e DPS a ×0.6, poi via il mod di peso minore finché ne resta
  *    uno (il gruppo not e i vincoli sugli slot restano sempre);
  * 2. fetch di 20 risultati equidistanti fra i primi 60 (spreadSample), salvati nello store;
- *    prezzo al 25° percentile del campione, verdetto dal prezzo (parityPriceFor); con meno di 3
- *    prezzi nessun verdetto (R26);
- * 3. contributo di ogni mod della query finale: p25(base) - p25(senza il mod e con la sua stat
+ *    prezzo consigliato al 10° percentile del campione (R32), verdetto dal prezzo
+ *    (parityPriceFor); con meno di 3 prezzi nessun verdetto (R26);
+ * 3. contributo di ogni mod della query finale: p10(base) - p10(senza il mod e con la sua stat
  *    nel not), su campioni equidistanti di 10 prezzi; nascosto se uno dei due ha meno di 3 prezzi;
  * 4. se il lato del mod più debole non ha slot liberi, confronto con oggetti alla pari che hanno
  *    uno slot libero su quel lato al posto di quel mod.
@@ -332,9 +336,9 @@ export async function deepAnalysis(
     return result
   }
 
-  const baseP25 = sampleP25(basePrices)
+  const baseP10 = sampleP10(basePrices)
   const contributions: NonNullable<Valuation['contributions']> = []
-  if (baseP25 !== null) {
+  if (baseP10 !== null) {
     // 3. contributi: oggetti alla pari senza quell'affisso
     for (const m of queryMods) {
       if (!budgetLeft()) break
@@ -343,9 +347,9 @@ export async function deepAnalysis(
         mods: queryMods.filter((x) => x !== m),
         extraExclude: [m.statId]
       })
-      const p25 = sampleP25(await fetchPrices(r, SIDE_FETCH))
-      if (p25 === null) continue
-      const delta = baseP25 - p25
+      const p10 = sampleP10(await fetchPrices(r, SIDE_FETCH))
+      if (p10 === null) continue
+      const delta = baseP10 - p10
       contributions.push({
         statId: m.statId,
         text: m.text,
@@ -365,8 +369,8 @@ export async function deepAnalysis(
         mods: queryMods.filter((m) => m !== weakest),
         openSlotSide: side
       })
-      const openP25 = sampleP25(await fetchPrices(r, SIDE_FETCH))
-      if (openP25 !== null && openP25 > baseP25) result.warnings.push(openSlotsWarning(openP25))
+      const openP10 = sampleP10(await fetchPrices(r, SIDE_FETCH))
+      if (openP10 !== null && openP10 > baseP10) result.warnings.push(openSlotsWarning(openP10))
     }
   }
   result.searches = searches

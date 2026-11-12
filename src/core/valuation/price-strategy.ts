@@ -98,9 +98,12 @@ export const MIN_PARITY_PRICES = 3
  * Pulizia dei prezzi dell'analisi approfondita: Tukey 1.5×IQR su log(prezzo), con n >= 4.
  * I prezzi hanno una coda lunga a destra: su scala lineare il limite inferiore è quasi sempre
  * negativo e i prezzi segnaposto bassi non vengono mai tolti; su scala log il criterio è sui
- * rapporti. Con IQR nullo (molti prezzi uguali) non scarta nulla. Con 3 prezzi i quartili non
- * hanno senso: nessuna pulizia. Restituisce i prezzi ordinati.
+ * rapporti. Con IQR sotto ln(1.1) (prezzi quasi tutti uguali) non scarta nulla: i limiti
+ * sarebbero così stretti da togliere prezzi normali. Con 3 prezzi i quartili non hanno senso:
+ * nessuna pulizia. Restituisce i prezzi ordinati.
  */
+const MIN_LOG_IQR = Math.log(1.1)
+
 export function cleanParityPrices(pricesExalted: number[]): number[] {
   const sorted = pricesExalted.filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
   if (sorted.length < 4) return sorted
@@ -108,7 +111,7 @@ export function cleanParityPrices(pricesExalted: number[]): number[] {
   const q1 = percentile(logs, 0.25)
   const q3 = percentile(logs, 0.75)
   const iqr = q3 - q1
-  if (iqr <= 0) return sorted
+  if (iqr < MIN_LOG_IQR) return sorted
   const lo = q1 - 1.5 * iqr
   const hi = q3 + 1.5 * iqr
   return sorted.filter((_, i) => logs[i] >= lo && logs[i] <= hi)
@@ -118,10 +121,15 @@ export function cleanParityPrices(pricesExalted: number[]): number[] {
 const PARITY_HIGH_COUNT = 15
 const PARITY_MEDIUM_COUNT = 6
 
+/** Margine minimo del prezzo "se puoi aspettare" sul consigliato (+20%). */
+const PATIENT_MIN_RATIO = 1.2
+
 /**
- * Prezzo dell'analisi approfondita sul confronto "alla pari" (R31): prezzo consigliato al 25°
- * percentile dei prezzi puliti (cleanParityPrices), min al 10°, max al 75°; il verdetto viene dal prezzo consigliato
- * (non dalla mediana, così un campione con coda alta non gonfia il verdetto).
+ * Prezzo dell'analisi approfondita sul confronto "alla pari" (R31, R32): prezzo consigliato al
+ * 10° percentile dei prezzi puliti (cleanParityPrices), cioè tra i più economici, il prezzo che
+ * vende subito; min al 5°, max al 50°. Il verdetto viene dal prezzo consigliato (non dalla
+ * mediana: le richieste del trade sono gonfiate rispetto alle vendite). Per Ottimo ed Eccellente
+ * `patient` = 25° percentile, solo se supera il consigliato di almeno il 20%.
  * Con meno di 3 prezzi puliti nessun verdetto (il messaggio lo aggiunge il chiamante).
  * Confidenza: alta con >= 15 prezzi e `fullMatch` (nessun mod tolto e gruppo not presente),
  * media con >= 6, altrimenti bassa. Pessimo resta senza prezzo (decisione utente del Task 13).
@@ -135,7 +143,7 @@ export function parityPriceFor(
   if (clean.length < MIN_PARITY_PRICES) {
     return { verdict: null, confidence: 'bassa', comparablesCount: clean.length, warnings: [] }
   }
-  const suggested = roundPrice(percentile(clean, 0.25))
+  const suggested = roundPrice(percentile(clean, 0.1))
   const verdict = verdictFor(suggested, t)
   const confidence: Confidence =
     clean.length >= PARITY_HIGH_COUNT && opts.fullMatch
@@ -152,8 +160,15 @@ export function parityPriceFor(
   if (verdict !== 'pessimo') {
     result.price = {
       suggested,
-      min: roundPrice(percentile(clean, 0.1)),
-      max: roundPrice(percentile(clean, 0.75))
+      min: roundPrice(percentile(clean, 0.05)),
+      max: roundPrice(percentile(clean, 0.5))
+    }
+    const patient = roundPrice(percentile(clean, 0.25))
+    if (
+      (verdict === 'ottimo' || verdict === 'eccellente') &&
+      patient >= suggested * PATIENT_MIN_RATIO
+    ) {
+      result.price.patient = patient
     }
   }
   return result

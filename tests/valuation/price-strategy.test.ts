@@ -178,21 +178,39 @@ describe('parityPriceFor (analisi approfondita, confronto alla pari)', () => {
   const steps = (n: number, from: number, step: number): number[] =>
     Array.from({ length: n }, (_, i) => from + i * step)
 
-  it('prezzo consigliato al 25° percentile, min al 10°, max al 75°', () => {
-    // 40..230 (nessun outlier su scala log): p25 = 87.5, p10 = 59, p75 = 182.5
+  it('prezzo consigliato al 10° percentile, min al 5°, max al 50°, se puoi aspettare al 25° (R32)', () => {
+    // 40..230 (nessun outlier su scala log): p10 = 59, p5 = 49.5, p50 = 135, p25 = 87.5
     const r = parityPriceFor(steps(20, 40, 10), T, { fullMatch: true })
-    expect(r.price).toEqual({ suggested: 88, min: 59, max: 183 })
+    expect(r.price).toEqual({ suggested: 59, min: 50, max: 135, patient: 88 })
     expect(r.verdict).toBe('ottimo')
     expect(r.comparablesCount).toBe(20)
   })
 
+  it('se puoi aspettare: solo se il p25 supera il consigliato di almeno il 20%', () => {
+    // 20 prezzi da 100 a 119: p10 = 101.9, p25 = 104.75 (+3%)
+    const r = parityPriceFor(steps(20, 100, 1), T, { fullMatch: true })
+    expect(r.verdict).toBe('ottimo')
+    expect(r.price?.patient).toBeUndefined()
+  })
+
+  it('se puoi aspettare: solo per Ottimo ed Eccellente', () => {
+    // 10..48 (passo 2): p10 = 13.8 (Buono), p25 = 19.5
+    const buono = parityPriceFor(steps(20, 10, 2), T, { fullMatch: true })
+    expect(buono.verdict).toBe('buono')
+    expect(buono.price?.patient).toBeUndefined()
+    // 300..1250 (passo 50): p10 = 395 (Eccellente), p25 = 537.5
+    const ecc = parityPriceFor(steps(20, 300, 50), T, { fullMatch: true })
+    expect(ecc.verdict).toBe('eccellente')
+    expect(ecc.price?.patient).toBe(538)
+  })
+
   it('verdetto dal prezzo consigliato, non dalla mediana (niente circolarità)', () => {
-    // mediana 310 (sarebbe Eccellente), p25 = 32.5 -> Buono
+    // mediana 310 (sarebbe Eccellente), p10 = 24.5 -> Buono
     const r = parityPriceFor([20, 25, 30, 40, 300, 320, 340, 360, 380, 400], T, {
       fullMatch: true
     })
     expect(r.verdict).toBe('buono')
-    expect(r.price?.suggested).toBe(33)
+    expect(r.price?.suggested).toBe(25)
   })
 
   it('Pessimo: nessun prezzo (decisione utente del Task 13)', () => {
@@ -234,11 +252,18 @@ describe('parityPriceFor (analisi approfondita, confronto alla pari)', () => {
     // scala lineare: limite inferiore negativo (1 resta), 600 tolto
     const r = parityPriceFor([1, 20, 30, 50, 80, 150, 300, 600], T, { fullMatch: true })
     expect(r.comparablesCount).toBe(7)
-    expect(r.price?.max).toBe(225)
+    // max = p50 di [20, 30, 50, 80, 150, 300, 600]
+    expect(r.price?.max).toBe(80)
   })
 
   it('IQR nullo (molti prezzi uguali): nessun prezzo scartato', () => {
     const r = parityPriceFor([5, 5, 5, 5, 5, 5, 8], T, { fullMatch: true })
+    expect(r.comparablesCount).toBe(7)
+  })
+
+  it('IQR sotto ln(1.1) (prezzi quasi uguali): nessun prezzo scartato', () => {
+    // IQR dei log = ln(104.5/101.5) ~ 0.029: senza soglia il 200 verrebbe scartato
+    const r = parityPriceFor([100, 101, 102, 103, 104, 105, 200], T, { fullMatch: true })
     expect(r.comparablesCount).toBe(7)
   })
 

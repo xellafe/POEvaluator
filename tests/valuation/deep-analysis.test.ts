@@ -325,6 +325,24 @@ describe('deepAnalysis: query base alla pari', () => {
     expect(plan.exclude).not.toContain('explicit.stat_709508406')
   })
 
+  it('DPS sotto 1: nessun filtro su quel danno; da 1 in su filtro con min almeno 1', () => {
+    const item = fixtureItem('rare-quarterstaff.txt')
+    item.explicits = item.explicits.filter((m) => m.statId !== 'explicit.stat_1037193709')
+    item.weapon = { pdps: 150, edps: 0.9, aps: 1.3 }
+    let plan = parityPlan(item)
+    let q = parityQuery(item, plan, DEFAULT_SETTINGS) as Query
+    expect(q.query.filters.equipment_filters).toEqual({ filters: { pdps: { min: 127 } } })
+    expect(plan.exclude).toContain('explicit.stat_1037193709')
+    // edps 1.1: coperto dal DPS, quindi serve il filtro (floor(1.1 × 0.85) = 0 -> min 1)
+    item.weapon = { pdps: 150, edps: 1.1, aps: 1.3 }
+    plan = parityPlan(item)
+    q = parityQuery(item, plan, DEFAULT_SETTINGS) as Query
+    expect(q.query.filters.equipment_filters).toEqual({
+      filters: { pdps: { min: 127 }, edps: { min: 1 } }
+    })
+    expect(plan.exclude).not.toContain('explicit.stat_1037193709')
+  })
+
   it('indexed dalla età massima delle impostazioni', () => {
     const item = boots(fourMods())
     const settings = { ...DEFAULT_SETTINGS, maxListingAgeDays: 2 }
@@ -495,7 +513,7 @@ describe('deepAnalysis', () => {
     expect(saved.find((l) => l.id === 'q1-5')!.priceExalted).toBe(15)
   })
 
-  it('contributo = p25(base) - p25(senza il mod e con la sua stat nel not)', async () => {
+  it('contributo = p10(base) - p10(senza il mod e con la sua stat nel not)', async () => {
     const mods = [mod(MOVE, 25, 'prefix'), mod(LIFE, 80, 'prefix'), mod(FIRE_RES, 30, 'suffix')]
     const { client, searches } = fakeClient((q) => {
       const ids = modIdsOf(q)
@@ -546,13 +564,13 @@ describe('deepAnalysis', () => {
     expect(v.warnings).toEqual(['Troppo pochi oggetti simili in vendita per una stima'])
   })
 
-  it('prezzo al 25° percentile e verdetto dal prezzo, non dalla mediana', async () => {
+  it('prezzo al 10° percentile e verdetto dal prezzo, non dalla mediana', async () => {
     const prices = [20, 25, 30, 40, 300, 320, 340, 360, 380, 400]
     const { client } = fakeClient(() => ({ total: 10, prices }))
     const v = await deepAnalysis(boots([mod(MOVE, 25)]), deps(client))
-    // mediana 310 (Eccellente col modello precedente), p25 = 32.5
+    // mediana 310 (Eccellente col modello precedente), p10 = 24.5
     expect(v.verdict).toBe('buono')
-    expect(v.price?.suggested).toBe(33)
+    expect(v.price?.suggested).toBe(25)
     expect(v.warnings.some((w) => w.startsWith('Pochi oggetti simili'))).toBe(false)
   })
 
@@ -609,14 +627,14 @@ describe('deepAnalysis', () => {
       { statId: MOVE, text: `text ${MOVE}`, deltaExalted: 0 },
       { statId: LIFE, text: `text ${LIFE}`, deltaExalted: 0 }
     ])
-    // il prezzo resta su tutti i 20 prezzi base (p25 = 33.75)
+    // il prezzo resta su tutti i 20 prezzi base (p10 = 19.5)
     expect(v.comparablesCount).toBe(20)
-    expect(v.price?.suggested).toBe(34)
+    expect(v.price?.suggested).toBe(20)
   })
 
   it('slot liberi: confronto sullo stesso quantile (10 prezzi equidistanti)', async () => {
     // base 10..200: 10 equidistanti 10, 30, 50, ..., 200; la pulizia su scala log toglie 10,
-    // p25 = 70. Slot liberi 70..108: 10 equidistanti 70, 74, ..., 108, p25 = 79
+    // p10 = 46. Slot liberi 70..108: 10 equidistanti 70, 74, ..., 108, p10 = 73.6
     const { client } = fakeClient((q) =>
       openSlotSearch(q)
         ? { total: 20, prices: range(20, (i) => 70 + i * 2) }
@@ -630,7 +648,7 @@ describe('deepAnalysis', () => {
       deps(client)
     )
     expect(v.warnings).toContain(
-      'Gli oggetti simili con uno slot libero si vendono intorno a 79 ex'
+      'Gli oggetti simili con uno slot libero si vendono intorno a 74 ex'
     )
   })
 
@@ -839,6 +857,12 @@ describe('deepAnalysis: annullamento', () => {
 
 describe('spreadSample', () => {
   const ids = (n: number): number[] => range(n, (i) => i)
+
+  it('n <= 1: nessun elemento o solo il primo', () => {
+    expect(spreadSample(ids(30), 0)).toEqual([])
+    expect(spreadSample(ids(30), 1)).toEqual([0])
+    expect(spreadSample([], 1)).toEqual([])
+  })
 
   it('con al massimo n elementi li prende tutti', () => {
     expect(spreadSample(ids(7), 10)).toEqual(ids(7))
