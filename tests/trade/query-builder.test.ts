@@ -4,7 +4,8 @@ import { initParserData } from '../../src/core/parser/parse-item'
 import {
   buildQuery,
   EMPTY_PREFIX_STAT_ID,
-  EMPTY_SUFFIX_STAT_ID
+  EMPTY_SUFFIX_STAT_ID,
+  indexedOptionFor
 } from '../../src/core/trade/query-builder'
 import type { ItemMod, RareItem } from '../../src/core/types'
 
@@ -118,5 +119,108 @@ describe('buildQuery', () => {
       valueFactor: 1
     }) as Q
     expect(q.query.stats[0].filters).toEqual([{ id: 'explicit.stat_1', value: {} }])
+  })
+})
+
+describe('buildQuery: opzioni del confronto alla pari', () => {
+  it('exclude: gruppo not con tutte le varianti di ogni stat, senza valori', () => {
+    const q = buildQuery(boots, {
+      mods: [vita],
+      valueFactor: 0.8,
+      exclude: ['explicit.stat_2250533757', 'explicit.stat_210067635']
+    }) as Q
+    expect(q.query.stats[q.query.stats.length - 1]).toEqual({
+      type: 'not',
+      filters: [
+        { id: 'explicit.stat_2250533757' },
+        { id: 'explicit.stat_210067635' },
+        { id: 'explicit.stat_681332047' }
+      ]
+    })
+  })
+
+  it('exclude vuoto: nessun gruppo not', () => {
+    const q = buildQuery(boots, { mods: [vita], valueFactor: 0.8, exclude: [] }) as Q
+    expect(q.query.stats.some((g: Q) => g.type === 'not')).toBe(false)
+  })
+
+  it('maxOpenPrefixes/maxOpenSuffixes: filtri pseudo con max', () => {
+    const q = buildQuery(boots, {
+      mods: [vita],
+      valueFactor: 1,
+      maxOpenPrefixes: 0,
+      maxOpenSuffixes: 0
+    }) as Q
+    const filters = q.query.stats[0].filters
+    expect(filters).toContainEqual({ id: EMPTY_PREFIX_STAT_ID, value: { max: 0 } })
+    expect(filters).toContainEqual({ id: EMPTY_SUFFIX_STAT_ID, value: { max: 0 } })
+  })
+
+  it('dps: equipment_filters con pdps/edps min; i valori 0 o assenti non producono filtri', () => {
+    const q = buildQuery(boots, { mods: [], valueFactor: 1, dps: { pdps: 100, edps: 75 } }) as Q
+    expect(q.query.filters.equipment_filters).toEqual({
+      filters: { pdps: { min: 100 }, edps: { min: 75 } }
+    })
+    const onlyPhys = buildQuery(boots, {
+      mods: [],
+      valueFactor: 1,
+      dps: { pdps: 100, edps: 0 }
+    }) as Q
+    expect(onlyPhys.query.filters.equipment_filters).toEqual({ filters: { pdps: { min: 100 } } })
+    const none = buildQuery(boots, { mods: [], valueFactor: 1, dps: { pdps: 0, edps: 0 } }) as Q
+    expect(none.query.filters.equipment_filters).toBeUndefined()
+  })
+
+  it('indexed, collapse e saleType: trade_filters', () => {
+    const q = buildQuery(boots, {
+      mods: [vita],
+      valueFactor: 1,
+      indexed: '1week',
+      collapse: true,
+      saleType: 'priced_with_info'
+    }) as Q
+    expect(q.query.filters.trade_filters).toEqual({
+      filters: {
+        indexed: { option: '1week' },
+        collapse: { option: 'true' },
+        sale_type: { option: 'priced_with_info' }
+      }
+    })
+  })
+
+  it('senza le nuove opzioni la query resta quella di prima (raccolta in background)', () => {
+    const q = buildQuery(boots, { mods: [vita], valueFactor: 1, sort: 'indexed' })
+    expect(q).toEqual({
+      query: {
+        status: { option: 'online' },
+        stats: [{ type: 'and', filters: [{ id: vita.statId, value: { min: 84 } }] }],
+        filters: {
+          type_filters: {
+            filters: { category: { option: 'armour.boots' }, rarity: { option: 'rare' } }
+          }
+        }
+      },
+      sort: { indexed: 'desc' }
+    })
+  })
+})
+
+describe('indexedOptionFor', () => {
+  it("sceglie l'opzione più vicina per eccesso", () => {
+    const cases: [number, string][] = [
+      [0, '1day'],
+      [1, '1day'],
+      [2, '3days'],
+      [3, '3days'],
+      [4, '1week'],
+      [7, '1week'],
+      [8, '2weeks'],
+      [14, '2weeks'],
+      [15, '1month'],
+      [30, '1month'],
+      [31, '2months'],
+      [365, '2months']
+    ]
+    for (const [days, option] of cases) expect(indexedOptionFor(days)).toBe(option)
   })
 })
