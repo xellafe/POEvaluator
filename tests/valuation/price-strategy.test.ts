@@ -179,9 +179,9 @@ describe('parityPriceFor (analisi approfondita, confronto alla pari)', () => {
     Array.from({ length: n }, (_, i) => from + i * step)
 
   it('prezzo consigliato al 25° percentile, min al 10°, max al 75°', () => {
-    // 10..200: p25 = 57.5, p10 = 29, p75 = 152.5
-    const r = parityPriceFor(steps(20, 10, 10), T, { fullMatch: true })
-    expect(r.price).toEqual({ suggested: 58, min: 29, max: 153 })
+    // 40..230 (nessun outlier su scala log): p25 = 87.5, p10 = 59, p75 = 182.5
+    const r = parityPriceFor(steps(20, 40, 10), T, { fullMatch: true })
+    expect(r.price).toEqual({ suggested: 88, min: 59, max: 183 })
     expect(r.verdict).toBe('ottimo')
     expect(r.comparablesCount).toBe(20)
   })
@@ -228,6 +228,18 @@ describe('parityPriceFor (analisi approfondita, confronto alla pari)', () => {
     const low = parityPriceFor(steps(5, 400, 10), T, { fullMatch: true })
     expect(low.verdict).toBe('eccellente')
     expect(low.warnings).toEqual([warn])
+  })
+
+  it('pulizia su scala log: toglie i prezzi segnaposto bassi, tiene la coda alta', () => {
+    // scala lineare: limite inferiore negativo (1 resta), 600 tolto
+    const r = parityPriceFor([1, 20, 30, 50, 80, 150, 300, 600], T, { fullMatch: true })
+    expect(r.comparablesCount).toBe(7)
+    expect(r.price?.max).toBe(225)
+  })
+
+  it('IQR nullo (molti prezzi uguali): nessun prezzo scartato', () => {
+    const r = parityPriceFor([5, 5, 5, 5, 5, 5, 8], T, { fullMatch: true })
+    expect(r.comparablesCount).toBe(7)
   })
 
   it('scarta gli outlier prima dei percentili', () => {
