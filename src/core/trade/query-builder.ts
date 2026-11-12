@@ -22,16 +22,15 @@ export interface QueryOptions {
    */
   exclude?: string[]
   /** Numero massimo di prefix/suffix vuoti (es. 0: l'oggetto ha gli slot pieni). */
-  maxOpenPrefixes?: number
-  maxOpenSuffixes?: number
+  /** Solo 0 è supportato: "nessuno slot vuoto" (pseudo nel gruppo `not`). */
+  maxOpenPrefixes?: 0
+  maxOpenSuffixes?: 0
   /** DPS minimi (equipment_filters `pdps`/`edps`); i valori <= 0 non producono filtri. */
   dps?: { pdps?: number; edps?: number }
   /** Età massima delle inserzioni (trade_filters `indexed`). */
   indexed?: IndexedOption
   /** Una sola inserzione per account (trade_filters `collapse`). */
   collapse?: boolean
-  /** Tipo di vendita (trade_filters `sale_type`), es. 'priced_with_info'. */
-  saleType?: string
 }
 
 /** Opzioni del filtro `indexed` del trade2 (GET /api/trade2/data/filters). */
@@ -84,7 +83,7 @@ interface CountGroup {
  * Le stat con più id explicit (es. attack speed locale/globale) vanno cercate con tutte le
  * varianti: un gruppo "count" (almeno 1) per mod, con lo stesso limite per ogni id.
  * Le altre stanno nel gruppo "and". Senza `initParserData` ogni stat ha un solo id.
- * Le opzioni del confronto alla pari (exclude, max slot vuoti, dps, indexed, collapse, saleType)
+ * Le opzioni del confronto alla pari (exclude, slot pieni, dps, indexed, collapse)
  * sono facoltative: senza di esse la query è quella usata dalla raccolta in background.
  */
 export function buildQuery(item: RareItem, opts: QueryOptions): object {
@@ -109,21 +108,15 @@ export function buildQuery(item: RareItem, opts: QueryOptions): object {
   if (opts.minOpenSuffixes && opts.minOpenSuffixes > 0) {
     filters.push({ id: EMPTY_SUFFIX_STAT_ID, value: { min: opts.minOpenSuffixes } })
   }
-  if (opts.maxOpenPrefixes !== undefined) {
-    filters.push({ id: EMPTY_PREFIX_STAT_ID, value: { max: opts.maxOpenPrefixes } })
+  // Slot pieni: il trade non indicizza la pseudo "slot vuoti" quando vale 0, quindi `max: 0`
+  // non trova nulla (verificato su trade2 il 2026-11-12). "Nessuno slot vuoto" = pseudo nel `not`.
+  const notFilters: { id: string }[] = []
+  if (opts.maxOpenPrefixes === 0) notFilters.push({ id: EMPTY_PREFIX_STAT_ID })
+  if (opts.maxOpenSuffixes === 0) notFilters.push({ id: EMPTY_SUFFIX_STAT_ID })
+  for (const id of opts.exclude ?? []) {
+    for (const alt of statAlternatives(id)) notFilters.push({ id: alt })
   }
-  if (opts.maxOpenSuffixes !== undefined) {
-    filters.push({ id: EMPTY_SUFFIX_STAT_ID, value: { max: opts.maxOpenSuffixes } })
-  }
-  const notGroups: NotGroup[] =
-    opts.exclude && opts.exclude.length > 0
-      ? [
-          {
-            type: 'not',
-            filters: opts.exclude.flatMap((id) => statAlternatives(id).map((alt) => ({ id: alt })))
-          }
-        ]
-      : []
+  const notGroups: NotGroup[] = notFilters.length > 0 ? [{ type: 'not', filters: notFilters }] : []
 
   const queryFilters: Record<string, unknown> = {
     type_filters: {
@@ -140,7 +133,6 @@ export function buildQuery(item: RareItem, opts: QueryOptions): object {
   const trade: Record<string, { option: string }> = {}
   if (opts.indexed) trade.indexed = { option: opts.indexed }
   if (opts.collapse) trade.collapse = { option: 'true' }
-  if (opts.saleType) trade.sale_type = { option: opts.saleType }
   if (Object.keys(trade).length > 0) queryFilters.trade_filters = { filters: trade }
 
   return {

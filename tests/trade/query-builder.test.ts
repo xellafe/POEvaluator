@@ -144,16 +144,16 @@ describe('buildQuery: opzioni del confronto alla pari', () => {
     expect(q.query.stats.some((g: Q) => g.type === 'not')).toBe(false)
   })
 
-  it('maxOpenPrefixes/maxOpenSuffixes: filtri pseudo con max', () => {
+  it('maxOpenPrefixes/maxOpenSuffixes 0: pseudo "slot vuoti" nel gruppo not (max 0 non trova nulla sul trade)', () => {
     const q = buildQuery(boots, {
       mods: [vita],
       valueFactor: 1,
       maxOpenPrefixes: 0,
       maxOpenSuffixes: 0
     }) as Q
-    const filters = q.query.stats[0].filters
-    expect(filters).toContainEqual({ id: EMPTY_PREFIX_STAT_ID, value: { max: 0 } })
-    expect(filters).toContainEqual({ id: EMPTY_SUFFIX_STAT_ID, value: { max: 0 } })
+    expect(q.query.stats[0].filters.some((f: Q) => f.id.startsWith('pseudo.'))).toBe(false)
+    const not = q.query.stats.find((g: Q) => g.type === 'not')
+    expect(not.filters).toEqual([{ id: EMPTY_PREFIX_STAT_ID }, { id: EMPTY_SUFFIX_STAT_ID }])
   })
 
   it('dps: equipment_filters con pdps/edps min; i valori 0 o assenti non producono filtri', () => {
@@ -171,19 +171,17 @@ describe('buildQuery: opzioni del confronto alla pari', () => {
     expect(none.query.filters.equipment_filters).toBeUndefined()
   })
 
-  it('indexed, collapse e saleType: trade_filters', () => {
+  it('indexed e collapse: trade_filters (sale_type non si usa: azzera i risultati)', () => {
     const q = buildQuery(boots, {
       mods: [vita],
       valueFactor: 1,
       indexed: '1week',
-      collapse: true,
-      saleType: 'priced_with_info'
+      collapse: true
     }) as Q
     expect(q.query.filters.trade_filters).toEqual({
       filters: {
         indexed: { option: '1week' },
-        collapse: { option: 'true' },
-        sale_type: { option: 'priced_with_info' }
+        collapse: { option: 'true' }
       }
     })
   })

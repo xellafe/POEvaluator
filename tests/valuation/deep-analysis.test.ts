@@ -94,9 +94,24 @@ function pseudoOf(query: object): Filter[] {
   return (query as Query).query.stats[0].filters.filter((f) => f.id.startsWith('pseudo.'))
 }
 
-/** Id del gruppo not (vuoto se assente). */
+/** Id del gruppo not (vuoto se assente), escluse le pseudo degli slot pieni. */
 function notIdsOf(query: object): string[] {
-  return (query as Query).query.stats.find((g) => g.type === 'not')?.filters.map((f) => f.id) ?? []
+  return (
+    (query as Query).query.stats
+      .find((g) => g.type === 'not')
+      ?.filters.map((f) => f.id)
+      .filter((id) => !id.startsWith('pseudo.')) ?? []
+  )
+}
+
+/** Pseudo "slot vuoti" nel gruppo not = lati pieni. */
+function fullSlotsOf(query: object): string[] {
+  return (
+    (query as Query).query.stats
+      .find((g) => g.type === 'not')
+      ?.filters.map((f) => f.id)
+      .filter((id) => id.startsWith('pseudo.')) ?? []
+  )
 }
 
 /** Ricerca degli oggetti con uno slot libero in più (filtro pseudo con min). */
@@ -198,12 +213,12 @@ describe('deepAnalysis: query base alla pari', () => {
       'explicit.stat_3556824919'
     ])
     // 3 prefix (pieni), 2 suffix (uno libero)
-    expect(pseudoOf(q)).toEqual([{ id: EMPTY_PREFIX_STAT_ID, value: { max: 0 } }])
+    expect(pseudoOf(q)).toEqual([])
+    expect(fullSlotsOf(q)).toEqual([EMPTY_PREFIX_STAT_ID])
     expect(q.query.filters.trade_filters).toEqual({
       filters: {
         indexed: { option: '1week' },
-        collapse: { option: 'true' },
-        sale_type: { option: 'priced_with_info' }
+        collapse: { option: 'true' }
       }
     })
     expect(q.query.filters.type_filters).toEqual({
@@ -235,7 +250,8 @@ describe('deepAnalysis: query base alla pari', () => {
       'explicit.stat_737908626',
       'explicit.stat_274716455'
     ])
-    expect(pseudoOf(q)).toEqual([{ id: EMPTY_SUFFIX_STAT_ID, value: { max: 0 } }])
+    expect(pseudoOf(q)).toEqual([])
+    expect(fullSlotsOf(q)).toEqual([EMPTY_SUFFIX_STAT_ID])
   })
 
   it('indexed dalla età massima delle impostazioni', () => {
@@ -285,10 +301,7 @@ describe('deepAnalysis', () => {
     expect(searches.length).toBe(5)
     for (const q of searches) {
       expect(notIdsOf(q)).toEqual(BOOTS_NOT)
-      expect(pseudoOf(q)).toEqual([
-        { id: EMPTY_PREFIX_STAT_ID, value: { max: 0 } },
-        { id: EMPTY_SUFFIX_STAT_ID, value: { max: 0 } }
-      ])
+      expect(fullSlotsOf(q)).toEqual([EMPTY_PREFIX_STAT_ID, EMPTY_SUFFIX_STAT_ID])
     }
   })
 
@@ -453,10 +466,8 @@ describe('deepAnalysis', () => {
     const v = await deepAnalysis(boots(mods, { openPrefixes: 0, openSuffixes: 0 }), deps(client))
     const last = searches[searches.length - 1]
     // mod più debole: FIRE_RES (0.5), suffix
-    expect(pseudoOf(last)).toEqual([
-      { id: EMPTY_SUFFIX_STAT_ID, value: { min: 1 } },
-      { id: EMPTY_PREFIX_STAT_ID, value: { max: 0 } }
-    ])
+    expect(pseudoOf(last)).toEqual([{ id: EMPTY_SUFFIX_STAT_ID, value: { min: 1 } }])
+    expect(fullSlotsOf(last)).toEqual([EMPTY_PREFIX_STAT_ID])
     expect(modIdsOf(last).length).toBe(3)
     expect(notIdsOf(last)).toEqual(notIdsOf(searches[0]))
     expect(v.warnings).toContain(

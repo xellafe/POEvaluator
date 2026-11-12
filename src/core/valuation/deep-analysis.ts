@@ -44,7 +44,6 @@ const NOT_MAX_STATS = 10
  * Tipo di vendita: solo inserzioni con prezzo. Opzione presente in GET /api/trade2/data/filters
  * (2026-11-12) ma non ancora provata in una ricerca reale: se il trade la rifiuta, togliere qui.
  */
-const SALE_TYPE = 'priced_with_info'
 
 /**
  * Stat di danno locali delle armi (data/en/stats.ndjson, id interni `local_*`): nelle armi
@@ -101,8 +100,8 @@ export interface ParityPlan {
   /** DPS dell'oggetto (armi d'attacco): sostituisce i mod di danno locali. */
   dps?: { pdps: number; edps: number }
   /** 0 sul lato (prefix/suffix) dove l'oggetto non ha slot liberi. */
-  maxOpenPrefixes?: number
-  maxOpenSuffixes?: number
+  maxOpenPrefixes?: 0
+  maxOpenSuffixes?: 0
   /** La classe ha una tabella pesi (senza: niente gruppo not, confidenza al massimo media). */
   hasWeights: boolean
 }
@@ -166,8 +165,7 @@ export function parityQueryOptions(
     valueFactor: step.valueFactor ?? VALUE_FACTOR,
     exclude: [...plan.exclude, ...(step.extraExclude ?? [])],
     indexed: indexedOptionFor(settings.maxListingAgeDays),
-    collapse: true,
-    saleType: SALE_TYPE
+    collapse: true
   }
   if (plan.dps) {
     opts.dps = {
