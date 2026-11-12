@@ -5,9 +5,10 @@ import { parseItemText } from '../core/parser/parse-item'
 import { makeConverter, type CurrencyRates } from '../core/pricing/currency'
 import type { Settings } from '../core/settings'
 import { isAbortError, type TradeClient } from '../core/trade/trade-client'
-import type { ParseResult } from '../core/types'
+import type { ParseResult, Valuation } from '../core/types'
 import { deepAnalysis } from '../core/valuation/deep-analysis'
 import { quickEvaluate } from '../core/valuation/quick-evaluator'
+import { DeepCache } from './deep-cache'
 
 export type { EvalResult }
 
@@ -78,6 +79,8 @@ export class EvaluatorService {
   private refreshing: Promise<void> | null = null
   /** Un refresh richiesto mentre un altro era in volo (es. cambio league): rifarlo subito dopo. */
   private rerun = false
+  /** Analisi approfondite recenti (30 min, 50 voci) per league e testo dell'oggetto. */
+  private readonly deepCache = new DeepCache()
 
   constructor(private readonly deps: EvaluatorDeps) {}
 
@@ -139,11 +142,18 @@ export class EvaluatorService {
     return { ok: true, item: parsed.item, valuation }
   }
 
+  /** Analisi approfondita ancora valida in cache per l'oggetto nella league corrente. */
+  private cachedDeep(text: string): { valuation: Valuation; at: Date } | null {
+    return this.deepCache.get(this.deps.settings().league, text, this.deps.now())
+  }
+
   /**
    * Motivo per cui l'analisi approfondita non può partire ora (null se può): tassi non ancora
    * disponibili (le inserzioni verrebbero tutte scartate) o trade in pausa per più di 10 s.
+   * Con un risultato in cache per `text` può sempre (risponde senza richieste).
    */
-  deepUnavailable(): EvalError | null {
+  deepUnavailable(text?: string): EvalError | null {
+    if (text !== undefined && this.cachedDeep(text)) return null
     if (this.toExalted(1, 'exalted') === null) return MESSAGES.noRates
     const blocked = this.deps.client.blockedForMs()
     if (blocked > TRADE_PAUSE_THRESHOLD_MS) return tradePausedMessage(blocked)
@@ -161,9 +171,18 @@ export class EvaluatorService {
   ): Promise<EvalResult | null> {
     const parsed = parseItemText(text)
     if (!parsed.ok) return { ok: false, ...MESSAGES[parsed.reason] }
+    const cached = this.cachedDeep(text)
+    if (cached) {
+      return {
+        ok: true,
+        item: parsed.item,
+        valuation: { ...cached.valuation, cachedAt: cached.at.toISOString() }
+      }
+    }
     const unavailable = this.deepUnavailable()
     if (unavailable) return { ok: false, ...unavailable }
     const { client, store, settings, now } = this.deps
+    const league = settings().league
     try {
       const valuation = await deepAnalysis(
         parsed.item,
@@ -171,6 +190,7 @@ export class EvaluatorService {
         onProgress
       )
       if (signal?.aborted) return null
+      this.deepCache.set(league, text, valuation, now())
       return { ok: true, item: parsed.item, valuation }
     } catch (e) {
       if (isAbortError(e) || signal?.aborted) return null

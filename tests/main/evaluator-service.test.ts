@@ -235,6 +235,67 @@ describe('EvaluatorService.deep', () => {
   })
 })
 
+describe('EvaluatorService.deep: cache', () => {
+  it('lo stesso oggetto entro 30 minuti risponde dalla cache, senza richieste, con cachedAt', async () => {
+    const s = await withRates()
+    const first = await s.deep(rareBoots, () => {})
+    expect(first?.ok).toBe(true)
+    if (!first?.ok) return
+    expect(first.valuation.cachedAt).toBeUndefined()
+    const calls = client.searches + client.fetches
+    const progress: number[] = []
+    const again = await s.deep(rareBoots.replace(/\n/g, '\r\n') + '\r\n', (d) => progress.push(d))
+    expect(client.searches + client.fetches).toBe(calls)
+    expect(progress).toEqual([])
+    expect(again?.ok && again.valuation).toEqual({
+      ...first.valuation,
+      cachedAt: NOW.toISOString()
+    })
+    s.stop()
+  })
+
+  it('con un risultato in cache il trade in pausa non impedisce la risposta', async () => {
+    const s = await withRates()
+    await s.deep(rareBoots, () => {})
+    client.blocked = 90_000
+    expect(s.deepUnavailable(rareBoots)).toBeNull()
+    expect(s.deepUnavailable()).not.toBeNull()
+    expect((await s.deep(rareBoots, () => {}))?.ok).toBe(true)
+    s.stop()
+  })
+
+  it('un cambio di league non usa la cache dell’altra league', async () => {
+    let settings: Settings = DEFAULT_SETTINGS
+    const s = service(
+      async () => ({ ...RATES, league: settings.league }),
+      () => settings
+    )
+    await s.init()
+    await s.refreshRates()
+    await s.deep(rareBoots, () => {})
+    const searches = client.searches
+    settings = { ...DEFAULT_SETTINGS, league: 'Dawn' }
+    await s.reloadRates()
+    await s.deep(rareBoots, () => {})
+    expect(client.searches).toBeGreaterThan(searches)
+    s.stop()
+  })
+
+  it('analisi annullata o fallita: non entra in cache', async () => {
+    const s = await withRates()
+    const ac = new AbortController()
+    ac.abort()
+    expect(await s.deep(rareBoots, () => {}, ac.signal)).toBeNull()
+    client.fail = true
+    expect((await s.deep(rareBoots, () => {}))?.ok).toBe(false)
+    client.fail = false
+    const searches = client.searches
+    expect((await s.deep(rareBoots, () => {}))?.ok).toBe(true)
+    expect(client.searches).toBeGreaterThan(searches)
+    s.stop()
+  })
+})
+
 describe('EvaluatorService tassi', () => {
   it('init carica i tassi dallo store prima della rete', async () => {
     store.saveRates(RATES)

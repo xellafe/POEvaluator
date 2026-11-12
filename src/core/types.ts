@@ -89,5 +89,7 @@ export interface Valuation {
   tradeUrl?: string
   /** Ricerche trade eseguite dall'analisi approfondita (solo deep). */
   searches?: number
+  /** Istante (ISO) dell'analisi approfondita restituita dalla cache; assente se appena eseguita. */
+  cachedAt?: string
   warnings: string[]
 }

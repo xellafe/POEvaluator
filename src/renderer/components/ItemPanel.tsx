@@ -3,6 +3,7 @@ import type { CSSProperties, JSX } from 'react'
 import type { ProgressPayload } from '../../core/ipc'
 import type { RareItem, Valuation } from '../../core/types'
 import {
+  analysisAge,
   CONFIDENCE_LEVEL,
   formatDelta,
   formatExalted,
@@ -206,7 +207,10 @@ function Done({ state, league, onClose }: Props & { state: PanelState }): JSX.El
         </div>
       )}
       <footer className="p-foot">
-        <span>Lega {league}</span>
+        <span>
+          Lega {league}
+          {v.cachedAt ? ` · ${analysisAge(v.cachedAt, new Date())}` : ''}
+        </span>
         {v.tradeUrl ? (
           <a className="btn" href={v.tradeUrl} target="_blank" rel="noreferrer">
             Apri sul trade

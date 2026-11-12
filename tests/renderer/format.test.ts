@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  analysisAge,
   formatDelta,
   formatPrice,
   priceParts,
@@ -111,5 +112,17 @@ describe('hotkey', () => {
     expect(hotkeyFromKeyEvent(ev('Semicolon', { alt: true }))).toBeNull()
     expect(hotkeyFromKeyEvent(ev('KeyD'))).toBeNull()
     expect(hotkeyFromKeyEvent(ev('KeyF'))).toBeNull()
+  })
+})
+
+describe('analysisAge', () => {
+  const now = new Date('2026-11-12T12:30:00.000Z')
+  it('sotto un minuto: "Analisi di poco fa"', () => {
+    expect(analysisAge('2026-11-12T12:29:01.000Z', now)).toBe('Analisi di poco fa')
+    expect(analysisAge('2026-11-12T12:30:05.000Z', now)).toBe('Analisi di poco fa')
+  })
+  it('in minuti interi', () => {
+    expect(analysisAge('2026-11-12T12:29:00.000Z', now)).toBe('Analisi di 1 min fa')
+    expect(analysisAge('2026-11-12T12:01:30.000Z', now)).toBe('Analisi di 28 min fa')
   })
 })

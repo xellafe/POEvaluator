@@ -133,7 +133,7 @@ async function requestDeep(getText: () => Promise<string>): Promise<void> {
         const quick = svc.quick(text)
         if (!quick.ok) return quick
         // tassi mancanti o trade in pausa: errore subito, senza aprire il pannello
-        const unavailable = svc.deepUnavailable()
+        const unavailable = svc.deepUnavailable(text)
         if (unavailable) return { ok: false, ...unavailable }
         send(IPC.analyzing, {
           item: quick.item,

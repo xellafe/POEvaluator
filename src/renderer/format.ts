@@ -64,6 +64,12 @@ export function verdictLabel(v: Verdict | null): string {
   return v === null ? 'Dati insufficienti' : VERDICT_LABELS[v]
 }
 
+/** Età di un'analisi approfondita presa dalla cache: "Analisi di N min fa" / "Analisi di poco fa". */
+export function analysisAge(cachedAt: string, now: Date): string {
+  const minutes = Math.floor((now.getTime() - new Date(cachedAt).getTime()) / 60_000)
+  return minutes < 1 ? 'Analisi di poco fa' : `Analisi di ${minutes} min fa`
+}
+
 /** Numero di tacche dell'indicatore di affidabilità. */
 export const CONFIDENCE_LEVEL: Record<Confidence, 1 | 2 | 3> = { bassa: 1, media: 2, alta: 3 }
 
