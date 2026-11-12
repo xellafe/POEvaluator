@@ -190,7 +190,8 @@ export class EvaluatorService {
         onProgress
       )
       if (signal?.aborted) return null
-      this.deepCache.set(league, text, valuation, now())
+      // "Dati insufficienti" non si memorizza: al prossimo tentativo il mercato può avere inserzioni
+      if (valuation.verdict !== null) this.deepCache.set(league, text, valuation, now())
       return { ok: true, item: parsed.item, valuation }
     } catch (e) {
       if (isAbortError(e) || signal?.aborted) return null

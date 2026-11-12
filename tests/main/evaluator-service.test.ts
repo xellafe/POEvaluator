@@ -35,6 +35,8 @@ interface FakeClient {
   searches: number
   fetches: number
   fail: boolean
+  /** search senza risultati: la deep finisce con "Dati insufficienti" */
+  empty: boolean
   blocked: number
   blockedForMs(): number
   search(): Promise<unknown>
@@ -46,6 +48,7 @@ function makeClient(): FakeClient {
     searches: 0,
     fetches: 0,
     fail: false,
+    empty: false,
     blocked: 0,
     blockedForMs() {
       return this.blocked
@@ -53,6 +56,7 @@ function makeClient(): FakeClient {
     async search() {
       this.searches++
       if (this.fail) throw new Error('HTTP 503')
+      if (this.empty) return { id: 'q1', total: 0, result: [] }
       return { id: 'q1', total: 50, result: ['a', 'b', 'c'] }
     },
     async fetchListings(ids: string[]) {
@@ -277,6 +281,18 @@ describe('EvaluatorService.deep: cache', () => {
     settings = { ...DEFAULT_SETTINGS, league: 'Dawn' }
     await s.reloadRates()
     await s.deep(rareBoots, () => {})
+    expect(client.searches).toBeGreaterThan(searches)
+    s.stop()
+  })
+
+  it('"Dati insufficienti" (nessun verdetto) non entra in cache', async () => {
+    const s = await withRates()
+    client.empty = true
+    const first = await s.deep(rareBoots, () => {})
+    expect(first?.ok && first.valuation.verdict).toBeNull()
+    client.empty = false
+    const searches = client.searches
+    expect((await s.deep(rareBoots, () => {}))?.ok).toBe(true)
     expect(client.searches).toBeGreaterThan(searches)
     s.stop()
   })

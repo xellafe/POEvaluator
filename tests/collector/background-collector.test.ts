@@ -383,6 +383,19 @@ describe('BackgroundCollector: classi richieste', () => {
     expect([classOf(client, 1), statOf(client, 1)]).toEqual([seeds[0].itemClass, seeds[0].statId])
   })
 
+  it('una classe che non arriva a 2 × KNN_MIN_LISTINGS esce dopo due giri sulle sue stat', async () => {
+    const { client, store, collector } = setup()
+    fill(store, target, 10)
+    collector.noteValuation(target)
+    const max = 2 * seedsOf(target).length
+    for (let i = 0; i < max + 1; i++) await collector.tick()
+    for (let i = 0; i < max; i++) expect(classOf(client, i)).toBe(target)
+    expect([classOf(client, max), statOf(client, max)]).toEqual([
+      seeds[0].itemClass,
+      seeds[0].statId
+    ])
+  })
+
   it('più classi richieste: servite a turno, la più recente prima; al massimo 5', async () => {
     expect(MAX_REQUESTED_CLASSES).toBe(5)
     const { client, collector } = setup()

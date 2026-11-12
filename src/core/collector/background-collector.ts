@@ -53,6 +53,8 @@ export class BackgroundCollector {
   /** Turno tra le classi richieste e prossimo seed di ciascuna. */
   private requestedTurn = 0
   private readonly requestedCursor = new Map<string, number>()
+  /** Ricerche fatte per ogni classe richiesta: oltre un limite la classe esce (mercato povero). */
+  private readonly requestedSearches = new Map<string, number>()
   /** Analisi approfondite in corso (una annullata può chiudersi dopo l'inizio della successiva). */
   private deepsRunning = 0
   private lastDeepEnd = Number.NEGATIVE_INFINITY
@@ -82,6 +84,7 @@ export class BackgroundCollector {
         MAX_REQUESTED_CLASSES
       )
       this.requestedTurn = 0 // si riparte dalla più recente
+      this.requestedSearches.delete(itemClass) // una nuova richiesta riapre il budget
     } catch (e) {
       this.deps.log?.(`classe richiesta non registrata: ${e instanceof Error ? e.message : e}`)
     }
@@ -102,11 +105,20 @@ export class BackgroundCollector {
     return this.deepsRunning > 0 || this.deps.now().getTime() - this.lastDeepEnd < DEEP_COOLDOWN_MS
   }
 
+  /** Due giri completi sulle stat seed della classe: se non bastano, il mercato è troppo povero. */
+  private maxRequestedSearches(itemClass: string): number {
+    return 2 * this.seeds.filter((s) => s.itemClass === itemClass).length
+  }
+
   /** Prossimo seed: prima le classi richieste ancora sotto 2 × KNN_MIN_LISTINGS, poi il giro normale. */
   private nextSeed(league: string): Seed {
     if (this.requested.length > 0) {
       const counts = this.deps.store.countByClass(league)
-      this.requested = this.requested.filter((c) => (counts[c] ?? 0) < 2 * KNN_MIN_LISTINGS)
+      this.requested = this.requested.filter(
+        (c) =>
+          (counts[c] ?? 0) < 2 * KNN_MIN_LISTINGS &&
+          (this.requestedSearches.get(c) ?? 0) < this.maxRequestedSearches(c)
+      )
     }
     if (this.requested.length > 0) {
       const itemClass = this.requested[this.requestedTurn % this.requested.length]
@@ -114,6 +126,7 @@ export class BackgroundCollector {
       const own = this.seeds.filter((s) => s.itemClass === itemClass)
       const i = this.requestedCursor.get(itemClass) ?? 0
       this.requestedCursor.set(itemClass, (i + 1) % own.length)
+      this.requestedSearches.set(itemClass, (this.requestedSearches.get(itemClass) ?? 0) + 1)
       return own[i % own.length]
     }
     const seed = this.seeds[this.cursor]
