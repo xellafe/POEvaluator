@@ -85,7 +85,21 @@ describe('toListing', () => {
     const l = toListing(raw, 'Standard', toExalted, now, BOOTS)!
     // result[2] ha 2P/2S: il fractured aggiunge un prefix
     expect([l.openPrefixes, l.openSuffixes]).toEqual([0, 1])
-    expect(l.mods).toContainEqual({ statId: 'fractured.stat_3299347043', value: 30 })
+    // id canonico come per gli item (R14)
+    expect(l.mods).toContainEqual({ statId: 'explicit.stat_3299347043', value: 30 })
+    expect(l.mods.some((m) => m.statId.startsWith('fractured.'))).toBe(false)
+  })
+
+  it('id alternativo della stessa stat (attack speed globale dei guanti) -> id canonico', () => {
+    const raw = structuredClone(fixture.result[2]) as { item: { explicitMods: Obj[] } }
+    raw.item.explicitMods.push({
+      description: '12% increased Attack Speed',
+      hash: 'stat.explicit.stat_681332047',
+      mods: []
+    })
+    const l = toListing(raw, 'Standard', toExalted, now, 'armour.gloves')!
+    expect(l.mods).toContainEqual({ statId: 'explicit.stat_210067635', value: 12 })
+    expect(l.mods.find((m) => m.statId === 'explicit.stat_681332047')).toBeUndefined()
   })
 
   it('gioielli: massimo 2 prefix/suffix', () => {

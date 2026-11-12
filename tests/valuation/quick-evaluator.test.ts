@@ -87,7 +87,8 @@ describe('default-weights.json', () => {
       'armour.focus',
       'armour.quiver',
       'weapon.bow',
-      'weapon.wand'
+      'weapon.wand',
+      'jewel'
     ]) {
       expect(DEFAULT_WEIGHTS[c], c).toBeDefined()
     }
@@ -183,6 +184,19 @@ describe('quickEvaluate', () => {
     expect(v.verdict).toBe('pessimo')
     expect(v.confidence).toBe('bassa')
     expect(v.warnings).toContain('Classe di oggetto senza pesi: verdetto non disponibile')
+  })
+
+  it('jewel: ha pesi, nessun warning "senza pesi"', () => {
+    const item = boots([mod('explicit.stat_587431675', 15, 15)], {
+      itemClass: 'jewel',
+      openPrefixes: 1,
+      openSuffixes: 1
+    })
+    const v = quickEvaluate(item, store, DEFAULT_SETTINGS, NOW)
+    expect(v.warnings).not.toContain('Classe di oggetto senza pesi: verdetto non disponibile')
+    expect(v.warnings).toContain(
+      "Pochi dati locali: verdetto indicativo, usa l'analisi approfondita"
+    )
   })
 
   it('40 listing di boots: kNN, più vita -> prezzo suggerito più alto, confidenza non alta', () => {

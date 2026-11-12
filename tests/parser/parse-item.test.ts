@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { initParserData, parseItemText } from '../../src/core/parser/parse-item'
+import {
+  initParserData,
+  parseItemText,
+  parseTradeLine,
+  statAlternatives
+} from '../../src/core/parser/parse-item'
 import type { RareItem } from '../../src/core/types'
 
 const fixture = (name: string): string =>
@@ -133,5 +138,38 @@ describe('parseItemText', () => {
 
   it.each(['unique.txt', 'gem.txt'])('%s -> unsupported_rarity', (name) => {
     expect(parseItemText(fixture(name))).toEqual({ ok: false, reason: 'unsupported_rarity' })
+  })
+})
+
+describe('parseTradeLine (id canonici, R14)', () => {
+  it('hash alternativo (attack speed globale) -> id canonico explicit[0]', () => {
+    expect(
+      parseTradeLine('12% increased Attack Speed', 'armour.gloves', 'explicit.stat_681332047')
+    ).toEqual({ value: 12, statId: 'explicit.stat_210067635' })
+  })
+
+  it('riga fractured -> id explicit canonico', () => {
+    expect(
+      parseTradeLine('+30 to maximum Life', 'armour.boots', 'fractured.stat_3299347043')
+    ).toEqual({ value: 30, statId: 'explicit.stat_3299347043' })
+  })
+
+  it('stat diversa dall hash -> null', () => {
+    expect(parseTradeLine('+30 to maximum Life', 'armour.boots', 'explicit.stat_1')).toBeNull()
+  })
+})
+
+describe('statAlternatives', () => {
+  it('tutti gli id explicit della stat, canonico per primo', () => {
+    expect(statAlternatives('explicit.stat_210067635')).toEqual([
+      'explicit.stat_210067635',
+      'explicit.stat_681332047'
+    ])
+    expect(statAlternatives('explicit.stat_681332047')[0]).toBe('explicit.stat_210067635')
+  })
+
+  it('stat con un solo id o sconosciuta -> [statId]', () => {
+    expect(statAlternatives('explicit.stat_3299347043')).toEqual(['explicit.stat_3299347043'])
+    expect(statAlternatives('explicit.stat_nope')).toEqual(['explicit.stat_nope'])
   })
 })

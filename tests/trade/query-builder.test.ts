@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { join } from 'node:path'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { initParserData } from '../../src/core/parser/parse-item'
 import {
   buildQuery,
   EMPTY_PREFIX_STAT_ID,
@@ -29,7 +31,36 @@ const boots: RareItem = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Q = any
 
+beforeAll(async () => {
+  await initParserData(join(__dirname, '../../data/en'))
+})
+
 describe('buildQuery', () => {
+  it('stat con più id explicit (attack speed locale/globale): gruppo count con tutte le varianti', () => {
+    const as = mod({ statId: 'explicit.stat_210067635', tradeValue: 10 })
+    const q = buildQuery(boots, { mods: [vita, as], valueFactor: 0.8 }) as Q
+    expect(q.query.stats).toHaveLength(2)
+    expect(q.query.stats[0]).toEqual({
+      type: 'and',
+      filters: [{ id: vita.statId, value: { min: 67 } }]
+    })
+    expect(q.query.stats[1]).toEqual({
+      type: 'count',
+      value: { min: 1 },
+      filters: [
+        { id: 'explicit.stat_210067635', value: { min: 8 } },
+        { id: 'explicit.stat_681332047', value: { min: 8 } }
+      ]
+    })
+  })
+
+  it('gruppo count anche per valori negativi (stesso tetto max per ogni variante)', () => {
+    const as = mod({ statId: 'explicit.stat_210067635', tradeValue: -10 })
+    const q = buildQuery(boots, { mods: [as], valueFactor: 0.8 }) as Q
+    expect(q.query.stats[0]).toEqual({ type: 'and', filters: [] })
+    expect(q.query.stats[1].filters.map((f: Q) => f.value)).toEqual([{ max: -8 }, { max: -8 }])
+  })
+
   it('produce categoria, status, gruppo and con min scalato e sort per prezzo', () => {
     const q = buildQuery(boots, { mods: [vita], valueFactor: 0.8 }) as Q
     expect(q.query.filters.type_filters.filters.category.option).toBe('armour.boots')

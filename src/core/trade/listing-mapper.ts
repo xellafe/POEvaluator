@@ -65,15 +65,15 @@ export function toListing(
 
   // Più righe con la stessa stat (es. due righe di vita) si sommano, come fa il trade.
   // Gli indici di extended.hashes non puntano a questi array: lo statId è nel campo `hash`.
+  // I mod sono indicizzati per id canonico (come gli item): locale/globale e fractured coincidono.
   const byStat = new Map<string, number>()
   for (const entry of affixMods) {
     if (!isObj(entry) || typeof entry.hash !== 'string' || typeof entry.description !== 'string') {
       continue
     }
-    const statId = entry.hash.replace(/^stat\./, '')
-    const value = parseTradeLine(entry.description, itemClass, statId)
-    if (value === null) continue
-    byStat.set(statId, (byStat.get(statId) ?? 0) + value)
+    const parsed = parseTradeLine(entry.description, itemClass, entry.hash.replace(/^stat\./, ''))
+    if (parsed === null) continue
+    byStat.set(parsed.statId, (byStat.get(parsed.statId) ?? 0) + parsed.value)
   }
   const mods = [...byStat].map(([statId, value]) => ({ statId, value }))
 

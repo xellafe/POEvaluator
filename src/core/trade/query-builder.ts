@@ -1,3 +1,4 @@
+import { statAlternatives } from '../parser/parse-item'
 import type { ItemMod, RareItem } from '../types'
 
 /** Stat pseudo del trade: numero di prefix/suffix vuoti (da data/en/stats.ndjson, "# Empty Prefix/Suffix Modifiers"). */
@@ -29,8 +30,33 @@ function modFilter(mod: ItemMod, valueFactor: number): StatFilter {
     : { id: mod.statId, value: { min: Math.floor(scaled) } }
 }
 
+interface CountGroup {
+  type: 'count'
+  value: { min: number }
+  filters: StatFilter[]
+}
+
+/**
+ * Le stat con più id explicit (es. attack speed locale/globale) vanno cercate con tutte le
+ * varianti: un gruppo "count" (almeno 1) per mod, con lo stesso limite per ogni id.
+ * Le altre stanno nel gruppo "and". Senza `initParserData` ogni stat ha un solo id.
+ */
 export function buildQuery(item: RareItem, opts: QueryOptions): object {
-  const filters: StatFilter[] = opts.mods.map((m) => modFilter(m, opts.valueFactor))
+  const filters: StatFilter[] = []
+  const countGroups: CountGroup[] = []
+  for (const m of opts.mods) {
+    const f = modFilter(m, opts.valueFactor)
+    const alternatives = statAlternatives(m.statId)
+    if (alternatives.length > 1) {
+      countGroups.push({
+        type: 'count',
+        value: { min: 1 },
+        filters: alternatives.map((id) => ({ id, value: f.value }))
+      })
+    } else {
+      filters.push(f)
+    }
+  }
   if (opts.minOpenPrefixes && opts.minOpenPrefixes > 0) {
     filters.push({ id: EMPTY_PREFIX_STAT_ID, value: { min: opts.minOpenPrefixes } })
   }
@@ -40,7 +66,7 @@ export function buildQuery(item: RareItem, opts: QueryOptions): object {
   return {
     query: {
       status: { option: 'online' },
-      stats: [{ type: 'and', filters }],
+      stats: [{ type: 'and', filters }, ...countGroups],
       filters: {
         type_filters: {
           filters: {

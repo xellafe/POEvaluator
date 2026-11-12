@@ -85,6 +85,32 @@ export async function initParserData(dataDir: string): Promise<void> {
     readFile(join(dataDir, 'stats.ndjson'), 'utf8')
   ])
   init({ itemsNdjson, statsNdjson })
+  EXPLICIT_ALTERNATIVES = explicitAlternatives(statsNdjson)
+}
+
+/** id explicit trade -> tutti gli id explicit della stessa stat (canonico = primo). */
+let EXPLICIT_ALTERNATIVES = new Map<string, readonly string[]>()
+
+function explicitAlternatives(statsNdjson: string): Map<string, readonly string[]> {
+  const out = new Map<string, readonly string[]>()
+  for (const line of statsNdjson.split(/\r?\n/)) {
+    if (line.trim() === '') continue
+    const ids = (JSON.parse(line) as { trade?: { ids?: Record<string, string[]> } }).trade?.ids
+      ?.explicit
+    if (!ids) continue
+    for (const id of ids) if (!out.has(id)) out.set(id, ids)
+  }
+  return out
+}
+
+/**
+ * Id explicit equivalenti di una stat (es. attack speed locale/globale), canonico per primo.
+ * Per stat con un solo id o sconosciute: `[statId]`. Richiede `initParserData`.
+ */
+export function statAlternatives(statId: string): string[] {
+  const ids = EXPLICIT_ALTERNATIVES.get(statId)
+  if (!ids) return [statId]
+  return [ids[0], ...ids.filter((id) => id !== ids[0])]
 }
 
 /** Legge il testo copiato dal gioco (formato avanzato, Ctrl+Alt+C) di un oggetto raro. */
@@ -227,8 +253,15 @@ const TRADE_LINE_TYPES: Record<string, ModifierType> = {
  * you"), calcolato con lo stesso matcher EE2 usato per gli item (segno e media come `tradeValue`).
  * `statId` è l'id trade atteso (hash dell'inserzione senza "stat.", es. "explicit.stat_123"):
  * se il matcher trova un'altra stat o nessuna, restituisce null. Richiede `initParserData`.
+ * Lo `statId` restituito è canonico come per gli item (`trade.ids.explicit[0]` della stat), così
+ * "explicit.stat_681332047" (attack speed globale) o "fractured.stat_X" coincidono con l'id dell'item;
+ * resta l'hash solo se la stat non ha id explicit.
  */
-export function parseTradeLine(line: string, itemClass: string, statId: string): number | null {
+export function parseTradeLine(
+  line: string,
+  itemClass: string,
+  statId: string
+): { value: number; statId: string } | null {
   const modTypeKey = statId.split('.')[0]
   const modType = TRADE_LINE_TYPES[modTypeKey]
   if (!modType) return null
@@ -239,6 +272,9 @@ export function parseTradeLine(line: string, itemClass: string, statId: string):
     CATEGORY_BY_TRADE_CLASS.get(itemClass)
   )
   if (!found || !found.stat.trade.ids[modTypeKey]?.includes(statId)) return null
-  // come EE2: una stat senza numeri conta 1
-  return found.roll?.value ?? 1
+  return {
+    // come EE2: una stat senza numeri conta 1
+    value: found.roll?.value ?? 1,
+    statId: found.stat.trade.ids.explicit?.[0] ?? statId
+  }
 }
