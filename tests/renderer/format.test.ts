@@ -3,6 +3,7 @@ import {
   analysisAge,
   formatDelta,
   formatPrice,
+  patientLine,
   priceParts,
   similarCount,
   formatRange,
@@ -124,5 +125,13 @@ describe('analysisAge', () => {
   it('in minuti interi', () => {
     expect(analysisAge('2026-11-12T12:29:00.000Z', now)).toBe('Analisi di 1 min fa')
     expect(analysisAge('2026-11-12T12:01:30.000Z', now)).toBe('Analisi di 28 min fa')
+  })
+})
+
+describe('patientLine (R32)', () => {
+  it('"Se puoi aspettare" con il prezzo formattato come gli altri', () => {
+    expect(patientLine(120, 250)).toBe('Se puoi aspettare: 120 ex')
+    expect(patientLine(450, 250)).toBe('Se puoi aspettare: 1.8 div (450 ex)')
+    expect(patientLine(450, null)).toBe('Se puoi aspettare: 450 ex')
   })
 })

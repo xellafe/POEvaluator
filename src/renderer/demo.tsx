@@ -178,7 +178,7 @@ const PANELS: [string, PanelState][] = [
       result: v({
         verdict: 'ottimo',
         confidence: 'alta',
-        price: { suggested: 280, min: 220, max: 340 },
+        price: { suggested: 280, min: 220, max: 340, patient: 360 },
         comparablesCount: 23,
         tradeUrl: 'https://www.pathofexile.com/trade2/search/poe2/Standard/abc',
         searches: 5,

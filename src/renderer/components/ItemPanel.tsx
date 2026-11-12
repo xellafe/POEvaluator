@@ -10,6 +10,7 @@ import {
   formatPrice,
   formatRange,
   itemClassLabel,
+  patientLine,
   priceParts,
   verdictLabel
 } from '../format'
@@ -154,6 +155,9 @@ function Done({ state, league, onClose }: Props & { state: PanelState }): JSX.El
               Prezzi {formatRange(v.price.min, v.price.max, exaltedPerDivine)} · consigliato{' '}
               {formatExalted(v.price.suggested)}
             </div>
+            {v.price.patient !== undefined && (
+              <div className="p-range">{patientLine(v.price.patient, exaltedPerDivine)}</div>
+            )}
           </>
         )}
         <dl className="p-stats">

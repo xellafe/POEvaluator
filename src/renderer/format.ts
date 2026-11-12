@@ -32,6 +32,10 @@ export function formatPrice(exalted: number, exaltedPerDivine: number | null): s
   return `${p.main} ${p.unit}`
 }
 
+/** Riga del prezzo "se puoi aspettare" della deep (R32): "Se puoi aspettare: 1.8 div (450 ex)". */
+export const patientLine = (exalted: number, exaltedPerDivine: number | null): string =>
+  `Se puoi aspettare: ${formatPrice(exalted, exaltedPerDivine)}`
+
 /** Prezzo in exalted ("280 ex"), arrotondato come nel resto dell'interfaccia. */
 export const formatExalted = (exalted: number): string => `${num(exalted)} ex`
 
