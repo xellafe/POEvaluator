@@ -11,6 +11,7 @@ import {
   deepAnalysis,
   LOCAL_DAMAGE_STATS,
   parityPlan,
+  spreadSample,
   parityQuery,
   type DeepDeps
 } from '../../src/core/valuation/deep-analysis'
@@ -238,20 +239,90 @@ describe('deepAnalysis: query base alla pari', () => {
   it('bastone: mod con peso nei filtri (×0.8), stat di valore assenti nel not, suffix pieni', () => {
     const item = fixtureItem('rare-staff.txt')
     const q = parityQuery(item, parityPlan(item), DEFAULT_SETTINGS) as Query
-    // cast speed 0.7, mana 0.3, int 0.2; "+3 Cold Spell Skills" non ha peso
+    // +3 Cold Spell Skills 0.7 (tier 3), cast speed 0.7 (tier 5), mana 0.3, int 0.2
     expect(modFiltersOf(q)).toEqual([
+      { id: 'explicit.stat_2254480358', value: { min: 2 } },
       { id: 'explicit.stat_2891184298', value: { min: 22 } },
       { id: 'explicit.stat_1050105434', value: { min: 148 } },
       { id: 'explicit.stat_328541901', value: { min: 19 } }
     ])
+    // stat di valore assenti: Spell 1, Spell Damage 0.8, livelli per elemento 0.7, critico 0.5,
+    // danno critico 0.4
     expect(notIdsOf(q)).toEqual([
       'explicit.stat_124131830',
       'explicit.stat_2974417149',
+      'explicit.stat_591105508',
+      'explicit.stat_1545858329',
+      'explicit.stat_4226189338',
+      'explicit.stat_1600707273',
       'explicit.stat_737908626',
       'explicit.stat_274716455'
     ])
     expect(pseudoOf(q)).toEqual([])
     expect(fullSlotsOf(q)).toEqual([EMPTY_SUFFIX_STAT_ID])
+  })
+
+  it('scettro: filtri sui mod "Allies in your Presence", not con le stat di valore assenti', () => {
+    const item = fixtureItem('rare-sceptre.txt')
+    const q = parityQuery(item, parityPlan(item), DEFAULT_SETTINGS) as Query
+    // cast speed degli alleati 0.5 (tier 2), attacco fuoco degli alleati 0.5 (tier 4), int 0.2
+    expect(modFiltersOf(q)).toEqual([
+      { id: 'explicit.stat_289128254', value: { min: 11 } },
+      { id: 'explicit.stat_849987426', value: { min: 16 } },
+      { id: 'explicit.stat_328541901', value: { min: 8 } }
+    ])
+    const not = notIdsOf(q)
+    expect(not.slice(0, 3)).toEqual([
+      'explicit.stat_2704225257',
+      'explicit.stat_3981240776',
+      'explicit.stat_2162097452'
+    ])
+    for (const id of [
+      'explicit.stat_2347036682',
+      'explicit.stat_2854751904',
+      'explicit.stat_1574590649',
+      'explicit.stat_1798257884',
+      'explicit.stat_1998951374',
+      'explicit.stat_262946222',
+      'explicit.stat_2901986750'
+    ]) {
+      expect(not).toContain(id)
+    }
+    expect(not).not.toContain('explicit.stat_849987426')
+    expect(not).not.toContain('explicit.stat_289128254')
+    expect(fullSlotsOf(q)).toEqual([EMPTY_SUFFIX_STAT_ID])
+  })
+
+  it('arma solo fisica (edps 0): i flat elementali locali vanno nel not', () => {
+    const item = fixtureItem('rare-quarterstaff.txt')
+    item.weapon = { pdps: 200, edps: 0, aps: 1.3 }
+    item.explicits = item.explicits.filter((m) => m.statId !== 'explicit.stat_1037193709')
+    const plan = parityPlan(item)
+    expect(plan.exclude).toEqual(
+      expect.arrayContaining([
+        'explicit.stat_709508406',
+        'explicit.stat_1037193709',
+        'explicit.stat_3336890334'
+      ])
+    )
+    // fisico e velocità d'attacco restano coperti dal DPS
+    expect(plan.exclude).not.toContain('explicit.stat_1940865751')
+    expect(plan.exclude).not.toContain('explicit.stat_210067635')
+    const q = parityQuery(item, plan, DEFAULT_SETTINGS) as Query
+    expect(q.query.filters.equipment_filters).toEqual({ filters: { pdps: { min: 170 } } })
+  })
+
+  it('arma senza danno fisico (pdps ~0): i mod di danno fisico locale vanno nel not', () => {
+    const item = fixtureItem('rare-quarterstaff.txt')
+    item.weapon = { pdps: 0, edps: 120, aps: 1.3 }
+    item.explicits = item.explicits.filter((m) => m.statId !== 'explicit.stat_1509134228')
+    const plan = parityPlan(item)
+    expect(plan.exclude).toEqual(
+      expect.arrayContaining(['explicit.stat_1509134228', 'explicit.stat_1940865751'])
+    )
+    // il freddo aggiunto è coperto dall'edps
+    expect(plan.exclude).not.toContain('explicit.stat_1037193709')
+    expect(plan.exclude).not.toContain('explicit.stat_709508406')
   })
 
   it('indexed dalla età massima delle impostazioni', () => {
@@ -261,13 +332,13 @@ describe('deepAnalysis: query base alla pari', () => {
     expect(q.query.filters.trade_filters.filters.indexed).toEqual({ option: '3days' })
   })
 
-  it('il gruppo not ha al massimo 10 stat, per peso decrescente', () => {
-    // anello: l'oggetto non ha nessuna delle stat di valore della tabella
-    const item = boots([mod(DEX, 10, 'suffix')], { itemClass: 'accessory.ring' })
+  it('il gruppo not ha al massimo 12 stat, per peso decrescente', () => {
+    // scettro senza mod: le 12 stat con peso >= 0.4 della tabella entrano tutte (con il limite
+    // di 10 le due da 0.4 restavano fuori)
+    const item = boots([], { itemClass: 'weapon.sceptre' })
     const plan = parityPlan(item)
-    expect(plan.exclude.length).toBeGreaterThan(0)
-    expect(plan.exclude.length).toBeLessThanOrEqual(10)
-    expect(plan.exclude[0]).toBe('explicit.stat_2901986750')
+    expect(plan.exclude).toHaveLength(12)
+    expect(plan.exclude[0]).toBe('explicit.stat_2704225257')
   })
 
   it('classe senza pesi: tutti i mod nella query, nessun gruppo not', () => {
@@ -364,7 +435,7 @@ describe('deepAnalysis', () => {
     expect(searches.length).toBe(6)
   })
 
-  it('fetch dei primi 20 per la base e 10 per le altre; nessun fetch con total 0', async () => {
+  it('fetch di 20 id per la base e 10 per le altre; nessun fetch con total 0', async () => {
     const { client, fetches } = fakeClient((q) => {
       const n = modIdsOf(q).length
       if (n === 4) return { total: 40, prices: range(25, () => 50) }
@@ -372,13 +443,41 @@ describe('deepAnalysis', () => {
       return { total: 25, prices: range(25, () => 30) }
     })
     await deepAnalysis(boots(fourMods()), deps(client))
-    expect(fetches[0]).toEqual({
-      ids: Array.from({ length: 20 }, (_, i) => `q1-${i}`),
-      queryId: 'q1'
-    })
+    expect(fetches[0].queryId).toBe('q1')
+    expect(fetches[0].ids).toHaveLength(20)
     // solo la ricerca senza MOVE ha risultati
     expect(fetches.length).toBe(2)
     expect(fetches[1].ids.length).toBe(10)
+  })
+
+  it('campione equidistante con 22 risultati: 20 id su tutto il range, primo e ultimo inclusi', async () => {
+    const { client, fetches } = fakeClient(() => ({ total: 22, prices: range(22, (i) => 10 + i) }))
+    await deepAnalysis(boots([mod(MOVE, 25)]), deps(client, { maxSearches: 1 }))
+    const idx = fetches[0].ids.map((id) => Number(id.split('-')[1]))
+    expect(idx).toHaveLength(20)
+    expect(idx[0]).toBe(0)
+    expect(idx[19]).toBe(21)
+    expect(new Set(idx).size).toBe(20)
+    expect(idx).toEqual([...idx].sort((a, b) => a - b))
+  })
+
+  it('campione equidistante con 100 risultati: id distribuiti sui primi 60', async () => {
+    const { client, fetches } = fakeClient((q) =>
+      modIdsOf(q).length === 2
+        ? { total: 500, prices: range(100, (i) => 10 + i) }
+        : { total: 500, prices: range(100, (i) => 5 + i) }
+    )
+    await deepAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client, { maxSearches: 2 }))
+    const base = fetches[0].ids.map((id) => Number(id.split('-')[1]))
+    expect(base).toHaveLength(20)
+    expect(base[0]).toBe(0)
+    expect(base[19]).toBe(59)
+    // passo ~3.1: nessun buco più grande di 4 posizioni
+    for (let i = 1; i < base.length; i++) expect(base[i] - base[i - 1]).toBeLessThanOrEqual(4)
+    const side = fetches[1].ids.map((id) => Number(id.split('-')[1]))
+    expect(side).toHaveLength(10)
+    expect(side[0]).toBe(0)
+    expect(side[9]).toBe(59)
   })
 
   it('salva nello store le inserzioni recuperate', async () => {
@@ -465,10 +564,11 @@ describe('deepAnalysis', () => {
     })
     const v = await deepAnalysis(boots(mods, { openPrefixes: 0, openSuffixes: 0 }), deps(client))
     const last = searches[searches.length - 1]
-    // mod più debole: FIRE_RES (0.5), suffix
+    // mod più debole: FIRE_RES (0.5), suffix: oggetti alla pari con uno slot libero al suo
+    // posto (FIRE_RES tolto dai mod ma non messo nel not)
     expect(pseudoOf(last)).toEqual([{ id: EMPTY_SUFFIX_STAT_ID, value: { min: 1 } }])
     expect(fullSlotsOf(last)).toEqual([EMPTY_PREFIX_STAT_ID])
-    expect(modIdsOf(last).length).toBe(3)
+    expect(modIdsOf(last).sort()).toEqual([LIFE, MOVE].sort())
     expect(notIdsOf(last)).toEqual(notIdsOf(searches[0]))
     expect(v.warnings).toContain(
       'Gli oggetti simili con uno slot libero si vendono intorno a 150 ex'
@@ -484,10 +584,10 @@ describe('deepAnalysis', () => {
       return { total: 12, prices: range(12, () => 100) }
     })
     const v = await deepAnalysis(boots(mods, { openPrefixes: 0, openSuffixes: 0 }), deps(client))
-    expect(pseudoOf(searches[searches.length - 1])).toContainEqual({
-      id: EMPTY_PREFIX_STAT_ID,
-      value: { min: 1 }
-    })
+    const last = searches[searches.length - 1]
+    expect(pseudoOf(last)).toEqual([{ id: EMPTY_PREFIX_STAT_ID, value: { min: 1 } }])
+    expect(fullSlotsOf(last)).toEqual([EMPTY_SUFFIX_STAT_ID])
+    expect(modIdsOf(last)).toEqual([MOVE])
     expect(v.warnings.some((w) => w.startsWith('Gli oggetti simili con uno slot libero'))).toBe(
       false
     )
@@ -500,8 +600,9 @@ describe('deepAnalysis', () => {
     expect(searches.length).toBe(3)
   })
 
-  it('mod neutro con prezzi crescenti: delta ~0 (stesso campione di 10 prezzi)', async () => {
-    // stessa distribuzione con e senza il mod: 10, 15, ..., 105 (fetch base 20, altre 10)
+  it('mod neutro con prezzi crescenti: delta 0 (stesso quantile, stessa granularità)', async () => {
+    // stessa distribuzione con e senza il mod: 10, 15, ..., 105 (fetch base 20, altre 10);
+    // il contributo confronta 10 prezzi equidistanti della base con i 10 della variante
     const { client } = fakeClient(() => ({ total: 20, prices: range(20, (i) => 10 + i * 5) }))
     const v = await deepAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))
     expect(v.contributions).toEqual([
@@ -513,8 +614,9 @@ describe('deepAnalysis', () => {
     expect(v.price?.suggested).toBe(34)
   })
 
-  it('slot liberi: confronto sui 10 prezzi base più economici', async () => {
-    // base 10..200 (10 più economici: p25 32.5); slot liberi 70..108 (10 più economici: p25 74.5)
+  it('slot liberi: confronto sullo stesso quantile (10 prezzi equidistanti)', async () => {
+    // base 10..200: 10 equidistanti 10, 30, 50, ..., 200; la pulizia su scala log toglie 10,
+    // p25 = 70. Slot liberi 70..108: 10 equidistanti 70, 74, ..., 108, p25 = 79
     const { client } = fakeClient((q) =>
       openSlotSearch(q)
         ? { total: 20, prices: range(20, (i) => 70 + i * 2) }
@@ -528,7 +630,7 @@ describe('deepAnalysis', () => {
       deps(client)
     )
     expect(v.warnings).toContain(
-      'Gli oggetti simili con uno slot libero si vendono intorno a 75 ex'
+      'Gli oggetti simili con uno slot libero si vendono intorno a 79 ex'
     )
   })
 
@@ -732,5 +834,19 @@ describe('deepAnalysis: annullamento', () => {
     )
     expect(isAbortError(err)).toBe(true)
     expect(store.countByClass('Standard')['armour.boots']).toBe(12)
+  })
+})
+
+describe('spreadSample', () => {
+  const ids = (n: number): number[] => range(n, (i) => i)
+
+  it('con al massimo n elementi li prende tutti', () => {
+    expect(spreadSample(ids(7), 10)).toEqual(ids(7))
+    expect(spreadSample(ids(10), 10)).toEqual(ids(10))
+  })
+
+  it('n elementi equidistanti fra i primi min(length, 60), primo e ultimo inclusi', () => {
+    expect(spreadSample(ids(22), 10)).toEqual([0, 2, 5, 7, 9, 12, 14, 16, 19, 21])
+    expect(spreadSample(ids(100), 10)).toEqual([0, 7, 13, 20, 26, 33, 39, 46, 52, 59])
   })
 })

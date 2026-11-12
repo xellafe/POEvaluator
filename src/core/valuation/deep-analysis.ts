@@ -6,7 +6,7 @@ import { toListing } from '../trade/listing-mapper'
 import type { ItemMod, Listing, RareItem, Valuation } from '../types'
 import { weightsFor, type Weights } from './features'
 import {
-  cleanPrices,
+  cleanParityPrices,
   MIN_PARITY_PRICES,
   parityPriceFor,
   percentile,
@@ -34,30 +34,41 @@ const DPS_FACTOR = 0.85
 const RELAXED_FACTOR = 0.6
 /** Risultati minimi della ricerca base prima di rilassare. */
 const MIN_BASE_TOTAL = 5
+/** Inserzioni scaricate dalla ricerca base e dalle ricerche secondarie. */
 const BASE_FETCH = 20
 const SIDE_FETCH = 10
+/**
+ * Il campione si prende fra i primi SAMPLE_CAP risultati (ordinati per prezzo crescente): id
+ * equidistanti, così base e varianti confrontano lo stesso quantile e non le stesse posizioni.
+ */
+export const SAMPLE_CAP = 60
 /** Peso minimo di una stat della classe per entrare nel gruppo not. */
 const NOT_MIN_WEIGHT = 0.4
 /** Stat massime nel gruppo not. */
-const NOT_MAX_STATS = 10
-/**
- * Tipo di vendita: solo inserzioni con prezzo. Opzione presente in GET /api/trade2/data/filters
- * (2026-11-12) ma non ancora provata in una ricerca reale: se il trade la rifiuta, togliere qui.
- */
+const NOT_MAX_STATS = 12
+/** Sotto questo DPS un'arma non ha quel tipo di danno (arrotondamenti del testo). */
+const DPS_EPSILON = 1
 
 /**
  * Stat di danno locali delle armi (data/en/stats.ndjson, id interni `local_*`): nelle armi
  * d'attacco il loro effetto è già nel DPS, quindi la query usa `pdps`/`edps` al posto loro.
  */
-export const LOCAL_DAMAGE_STATS: readonly string[] = [
+export const LOCAL_PHYSICAL_STATS: readonly string[] = [
   'explicit.stat_1509134228', // #% increased Physical Damage (local_physical_damage_+%)
-  'explicit.stat_1940865751', // Adds # to # Physical Damage (local_minimum_added_physical_damage)
+  'explicit.stat_1940865751' // Adds # to # Physical Damage (local_minimum_added_physical_damage)
+]
+export const LOCAL_ELEMENTAL_STATS: readonly string[] = [
   'explicit.stat_709508406', // Adds # to # Fire Damage (local_minimum_added_fire_damage)
   'explicit.stat_1037193709', // Adds # to # Cold Damage (local_minimum_added_cold_damage)
-  'explicit.stat_3336890334', // Adds # to # Lightning Damage (local_minimum_added_lightning_damage)
-  'explicit.stat_210067635' // #% increased Attack Speed (local_attack_speed_+%)
+  'explicit.stat_3336890334' // Adds # to # Lightning Damage (local_minimum_added_lightning_damage)
 ]
-const LOCAL_DAMAGE = new Set(LOCAL_DAMAGE_STATS)
+/** #% increased Attack Speed (local_attack_speed_+%): entra sia nel pdps sia nell'edps. */
+const LOCAL_ATTACK_SPEED = 'explicit.stat_210067635'
+export const LOCAL_DAMAGE_STATS: readonly string[] = [
+  ...LOCAL_PHYSICAL_STATS,
+  ...LOCAL_ELEMENTAL_STATS,
+  LOCAL_ATTACK_SPEED
+]
 
 /** Armi senza danno d'attacco (incantatori): nessun filtro DPS. */
 const CASTER_WEAPONS = new Set(['weapon.wand', 'weapon.staff', 'weapon.sceptre'])
@@ -112,8 +123,7 @@ export interface ParityPlan {
  */
 export function parityPlan(item: RareItem): ParityPlan {
   const weights = weightsFor(item.itemClass)
-  const dpsActive = isAttackWeapon(item.itemClass) && item.weapon !== undefined
-  const coveredByDps = (statId: string): boolean => dpsActive && LOCAL_DAMAGE.has(statId)
+  const coveredByDps = dpsCoverage(item)
 
   const candidates = item.explicits.filter((m) => !coveredByDps(m.statId))
   const mods = weights
@@ -133,10 +143,28 @@ export function parityPlan(item: RareItem): ParityPlan {
     : []
 
   const plan: ParityPlan = { mods, exclude, hasWeights: weights !== undefined }
-  if (dpsActive && item.weapon) plan.dps = { pdps: item.weapon.pdps, edps: item.weapon.edps }
+  if (isAttackWeapon(item.itemClass) && item.weapon) {
+    plan.dps = { pdps: item.weapon.pdps, edps: item.weapon.edps }
+  }
   if (item.openPrefixes === 0) plan.maxOpenPrefixes = 0
   if (item.openSuffixes === 0) plan.maxOpenSuffixes = 0
   return plan
+}
+
+/**
+ * Stat di danno locali coperte dal filtro DPS dell'oggetto. Un tipo di danno è coperto solo se
+ * l'arma lo ha: su un'arma solo fisica (edps 0) non c'è filtro edps, quindi i flat elementali
+ * restano stat normali (nel not se hanno peso); lo stesso per il fisico con pdps ~0.
+ * La velocità d'attacco locale entra in tutti e due i DPS.
+ */
+function dpsCoverage(item: RareItem): (statId: string) => boolean {
+  const weapon = isAttackWeapon(item.itemClass) ? item.weapon : undefined
+  if (!weapon) return () => false
+  const covered = new Set<string>()
+  if (weapon.pdps >= DPS_EPSILON) LOCAL_PHYSICAL_STATS.forEach((id) => covered.add(id))
+  if (weapon.edps >= DPS_EPSILON) LOCAL_ELEMENTAL_STATS.forEach((id) => covered.add(id))
+  if (covered.size > 0) covered.add(LOCAL_ATTACK_SPEED)
+  return (statId) => covered.has(statId)
 }
 
 /** Variante di una ricerca rispetto alla query base del piano. */
@@ -191,11 +219,28 @@ export function parityQuery(
 }
 
 /**
- * 25° percentile dei primi 10 prezzi (i più economici: le ricerche sono per prezzo crescente)
- * dopo la pulizia; null se ne restano meno di 3. Stesso campione per base e ricerche secondarie.
+ * `n` elementi equidistanti fra i primi `min(items.length, cap)`, primo e ultimo inclusi; con al
+ * massimo `n` elementi li prende tutti. Sugli id del trade (ordinati per prezzo crescente) dà un
+ * campione dello stesso quantile qualunque sia il numero di risultati.
+ */
+export function spreadSample<T>(items: readonly T[], n: number, cap = SAMPLE_CAP): T[] {
+  const m = Math.min(items.length, cap)
+  if (m <= n) return items.slice(0, m)
+  return Array.from({ length: n }, (_, i) => items[Math.round((i * (m - 1)) / (n - 1))])
+}
+
+/**
+ * 25° percentile di un campione di SIDE_FETCH prezzi equidistanti (dopo la pulizia); null se ne
+ * restano meno di 3. Il campione base (20 prezzi) si riduce a 10 equidistanti, così base e
+ * ricerche secondarie hanno la stessa granularità.
  */
 function sampleP25(prices: number[]): number | null {
-  const clean = cleanPrices([...prices].sort((a, b) => a - b).slice(0, SIDE_FETCH))
+  const sample = spreadSample(
+    [...prices].sort((a, b) => a - b),
+    SIDE_FETCH,
+    Number.POSITIVE_INFINITY
+  )
+  const clean = cleanParityPrices(sample)
   return clean.length >= MIN_PARITY_PRICES ? percentile(clean, 0.25) : null
 }
 
@@ -204,12 +249,13 @@ function sampleP25(prices: number[]): number | null {
  * 1. ricerca base (parityPlan): mod utili ×0.8, DPS ×0.85, gruppo not, slot pieni, indexed,
  *    collapse; se total < 5: mod e DPS a ×0.6, poi via il mod di peso minore finché ne resta
  *    uno (il gruppo not e i vincoli sugli slot restano sempre);
- * 2. fetch dei primi 20 risultati, salvati nello store; prezzo al 25° percentile, verdetto dal
- *    prezzo (parityPriceFor); con meno di 3 prezzi nessun verdetto (R26);
+ * 2. fetch di 20 risultati equidistanti fra i primi 60 (spreadSample), salvati nello store;
+ *    prezzo al 25° percentile del campione, verdetto dal prezzo (parityPriceFor); con meno di 3
+ *    prezzi nessun verdetto (R26);
  * 3. contributo di ogni mod della query finale: p25(base) - p25(senza il mod e con la sua stat
- *    nel not), sui primi 10 prezzi; nascosto se una delle due ha meno di 3 prezzi;
- * 4. se il lato del mod più debole non ha slot liberi, confronto con oggetti alla pari con uno
- *    slot libero su quel lato.
+ *    nel not), su campioni equidistanti di 10 prezzi; nascosto se uno dei due ha meno di 3 prezzi;
+ * 4. se il lato del mod più debole non ha slot liberi, confronto con oggetti alla pari che hanno
+ *    uno slot libero su quel lato al posto di quel mod.
  * Ogni ricerca conta nel budget `maxSearches` (priorità 1 > 3 > 4); gli errori del client
  * vengono propagati (le inserzioni già recuperate restano salvate). Con `deps.signal` annullato
  * rigetta con AbortError al passo successivo, senza altri `onProgress`.
@@ -240,10 +286,10 @@ export async function deepAnalysis(
     return r
   }
 
-  /** Recupera i primi `n` risultati, li salva e restituisce i prezzi in exalted. */
+  /** Recupera `n` risultati equidistanti, li salva e restituisce i prezzi in exalted. */
   const fetchPrices = async (r: SearchResult, n: number): Promise<number[]> => {
     if (r.total === 0 || r.result.length === 0) return []
-    const raw = await client.fetchListings(r.result.slice(0, n), r.id, 'user', signal)
+    const raw = await client.fetchListings(spreadSample(r.result, n), r.id, 'user', signal)
     const listings = raw
       .map((x) => toListing(x, league, deps.toExalted, now, item.itemClass))
       .filter((l): l is Listing => l !== null)
@@ -311,8 +357,14 @@ export async function deepAnalysis(
     const weakest = sortModsByWeight(item.explicits, weightsFor(item.itemClass) ?? {}).at(-1)
     const side = weakest?.type === 'prefix' || weakest?.type === 'suffix' ? weakest.type : null
     const sideFull = side === 'prefix' ? item.openPrefixes === 0 : item.openSuffixes === 0
-    if (side && sideFull && budgetLeft()) {
-      const r = await search({ ...current(), openSlotSide: side })
+    if (weakest && side && sideFull && budgetLeft()) {
+      // il mod più debole esce dai mod (non va nel not): oggetti alla pari con uno slot libero al
+      // suo posto; tenerlo renderebbe la ricerca impossibile se il lato è tutto nella query
+      const r = await search({
+        ...current(),
+        mods: queryMods.filter((m) => m !== weakest),
+        openSlotSide: side
+      })
       const openP25 = sampleP25(await fetchPrices(r, SIDE_FETCH))
       if (openP25 !== null && openP25 > baseP25) result.warnings.push(openSlotsWarning(openP25))
     }
