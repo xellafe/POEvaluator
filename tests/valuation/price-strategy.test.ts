@@ -248,12 +248,16 @@ describe('parityPriceFor (analisi approfondita, confronto alla pari)', () => {
     expect(low.warnings).toEqual([warn])
   })
 
-  it('pulizia su scala log: toglie i prezzi segnaposto bassi, tiene la coda alta', () => {
-    // scala lineare: limite inferiore negativo (1 resta), 600 tolto
+  it('pulizia solo della coda alta (R33): i prezzi bassi restano, sono la concorrenza che vende subito', () => {
     const r = parityPriceFor([1, 20, 30, 50, 80, 150, 300, 600], T, { fullMatch: true })
-    expect(r.comparablesCount).toBe(7)
-    // max = p50 di [20, 30, 50, 80, 150, 300, 600]
-    expect(r.price?.max).toBe(80)
+    expect(r.comparablesCount).toBe(8)
+    // consigliato = p10 di tutti gli 8 prezzi (R-7: 1 + 0.7 · 19 = 14.3)
+    expect(r.price?.suggested).toBe(14)
+  })
+
+  it('pulizia su scala log: toglie i prezzi fuori scala in alto', () => {
+    const r = parityPriceFor([10, 11, 12, 13, 14, 15, 5000], T, { fullMatch: true })
+    expect(r.comparablesCount).toBe(6)
   })
 
   it('IQR nullo (molti prezzi uguali): nessun prezzo scartato', () => {

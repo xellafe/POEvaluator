@@ -95,10 +95,10 @@ export function priceFor(prices: number[], t: Settings['thresholds']): Result {
 /** Prezzi puliti minimi per dare un verdetto nell'analisi approfondita. */
 export const MIN_PARITY_PRICES = 3
 /**
- * Pulizia dei prezzi dell'analisi approfondita: Tukey 1.5×IQR su log(prezzo), con n >= 4.
- * I prezzi hanno una coda lunga a destra: su scala lineare il limite inferiore è quasi sempre
- * negativo e i prezzi segnaposto bassi non vengono mai tolti; su scala log il criterio è sui
- * rapporti. Con IQR sotto ln(1.1) (prezzi quasi tutti uguali) non scarta nulla: i limiti
+ * Pulizia dei prezzi dell'analisi approfondita: Tukey 1.5×IQR su log(prezzo), con n >= 4, solo
+ * verso l'alto (R33): le richieste fuori scala (price fixing, prezzi di prova) si tolgono, i prezzi
+ * bassi restano perché sono le inserzioni con cui compete chi vuole vendere subito. Su scala log il
+ * criterio è sui rapporti. Con IQR sotto ln(1.1) (prezzi quasi tutti uguali) non scarta nulla: i limiti
  * sarebbero così stretti da togliere prezzi normali. Con 3 prezzi i quartili non hanno senso:
  * nessuna pulizia. Restituisce i prezzi ordinati.
  */
@@ -112,9 +112,9 @@ export function cleanParityPrices(pricesExalted: number[]): number[] {
   const q3 = percentile(logs, 0.75)
   const iqr = q3 - q1
   if (iqr < MIN_LOG_IQR) return sorted
-  const lo = q1 - 1.5 * iqr
+  // Solo la coda alta (R33): i prezzi bassi sono la concorrenza reale per chi vuole vendere subito.
   const hi = q3 + 1.5 * iqr
-  return sorted.filter((_, i) => logs[i] >= lo && logs[i] <= hi)
+  return sorted.filter((_, i) => logs[i] <= hi)
 }
 
 /** Prezzi puliti per la confidenza alta / media dell'analisi approfondita. */
