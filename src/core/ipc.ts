@@ -63,6 +63,8 @@ export const IPC = {
   deep: 'valuation:deep',
   getSettings: 'settings:get',
   setSettings: 'settings:set',
+  /** renderer -> main: league PoE2 disponibili sul trade */
+  leagues: 'settings:leagues',
   /** main -> overlay: chiudi badge e pannello (Esc in gioco) */
   dismiss: 'overlay:dismiss',
   /** overlay -> main: il mouse è sopra un elemento cliccabile (badge o pannello) */
@@ -81,4 +83,6 @@ export interface PoeApi {
   setInteractive(on: boolean): void
   getSettings(): Promise<Settings>
   setSettings(patch: SettingsPatch): Promise<Settings>
+  /** League PoE2 attive sul trade; lista vuota se non è stato possibile scaricarle. */
+  getLeagues(): Promise<string[]>
 }

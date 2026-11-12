@@ -661,6 +661,13 @@ kbd {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
 }
+select.input {
+  cursor: pointer;
+}
+select.input option {
+  background: #15110d;
+  color: var(--text);
+}
 .input[aria-invalid='true'] {
   border-color: var(--neg);
 }

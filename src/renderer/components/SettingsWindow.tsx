@@ -112,9 +112,12 @@ export function SettingsWindow(): JSX.Element {
   const [form, setForm] = useState<Form | null>(null)
   const [capturing, setCapturing] = useState<HotkeyName | null>(null)
   const [error, setError] = useState('')
+  /** null = download in corso; [] = elenco non disponibile (si scrive a mano). */
+  const [leagues, setLeagues] = useState<string[] | null>(null)
 
   useEffect(() => {
     void window.poe.getSettings().then((s) => setForm(toForm(s)))
+    window.poe.getLeagues().then(setLeagues, () => setLeagues([]))
   }, [])
 
   if (!form) return <div className="window fill" />
@@ -152,15 +155,38 @@ export function SettingsWindow(): JSX.Element {
           <div className="field">
             <label htmlFor="league">
               <span className="f-label">Lega</span>
-              <span className="f-help">Nome esatto della lega in cui cercare i prezzi</span>
+              <span className="f-help">
+                {leagues === null || leagues.length > 0
+                  ? 'Lega in cui cercare i prezzi'
+                  : 'Elenco non disponibile: scrivi il nome esatto della lega'}
+              </span>
             </label>
-            <input
-              id="league"
-              className="input wide"
-              value={form.league}
-              aria-invalid={form.league.trim() === ''}
-              onChange={(e) => update({ league: e.target.value })}
-            />
+            {leagues && leagues.length > 0 ? (
+              <select
+                id="league"
+                className="input wide"
+                value={form.league}
+                onChange={(e) => update({ league: e.target.value })}
+              >
+                {!leagues.includes(form.league) && (
+                  <option value={form.league}>{form.league} (non più attiva)</option>
+                )}
+                {leagues.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id="league"
+                className="input wide"
+                value={form.league}
+                disabled={leagues === null}
+                aria-invalid={form.league.trim() === ''}
+                onChange={(e) => update({ league: e.target.value })}
+              />
+            )}
           </div>
         </div>
 

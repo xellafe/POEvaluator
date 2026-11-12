@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { TradeClient, tradeUrl } from '../../src/core/trade/trade-client'
+import { parseLeagues, TradeClient, tradeUrl } from '../../src/core/trade/trade-client'
 
 const UA = 'POEvaluator/0.1.0 (+test)'
 
@@ -242,5 +242,27 @@ describe('tradeUrl', () => {
     expect(tradeUrl('Rise of the Abyssal', 'abc')).toBe(
       'https://www.pathofexile.com/trade2/search/poe2/Rise%20of%20the%20Abyssal/abc'
     )
+  })
+
+  it('leagues: GET su data/leagues e restituisce solo gli id PoE2', async () => {
+    const f = makeFetch(() =>
+      json({
+        result: [
+          { id: 'Runes of Aldur', realm: 'poe2', text: 'Runes of Aldur' },
+          { id: 'Standard', realm: 'poe2', text: 'Standard' },
+          { id: 'Settlers', realm: 'pc', text: 'Settlers' },
+          { id: 42 }
+        ]
+      })
+    )
+    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const p = client.leagues('user')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(await p).toEqual(['Runes of Aldur', 'Standard'])
+    expect(f.calls[0].url).toBe('https://www.pathofexile.com/api/trade2/data/leagues')
+  })
+
+  it('parseLeagues rifiuta una risposta senza result', () => {
+    expect(() => parseLeagues({})).toThrow(/league/)
   })
 })

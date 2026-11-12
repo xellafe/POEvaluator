@@ -7,13 +7,27 @@ export interface SearchResult {
   total: number
 }
 
-type Kind = 'search' | 'fetch'
+type Kind = 'search' | 'fetch' | 'data'
 
 const BASE = 'https://www.pathofexile.com'
 const FETCH_CHUNK = 10
 const MAX_429_RETRIES = 3
 const REQUEST_TIMEOUT_MS = 20_000
 const PRIORITY_ORDER: Record<Priority, number> = { user: 0, stash: 1, background: 2 }
+
+/** Estrae gli id delle league PoE2 dalla risposta di `/api/trade2/data/leagues`. */
+export function parseLeagues(json: unknown): string[] {
+  const result = (json as { result?: unknown } | null)?.result
+  if (!Array.isArray(result)) throw new Error('Risposta delle league non valida')
+  const ids: string[] = []
+  for (const l of result) {
+    const r = l as { id?: unknown; realm?: unknown }
+    if (typeof r?.id !== 'string' || r.id === '') continue
+    if (r.realm !== undefined && r.realm !== 'poe2') continue
+    if (!ids.includes(r.id)) ids.push(r.id)
+  }
+  return ids
+}
 
 export function tradeUrl(league: string, queryId: string): string {
   return `${BASE}/trade2/search/poe2/${encodeURIComponent(league)}/${encodeURIComponent(queryId)}`
@@ -48,7 +62,7 @@ export class TradeClient {
   constructor(opts: {
     userAgent: string
     fetchImpl?: typeof fetch
-    limiters?: { search?: RateLimiter; fetch?: RateLimiter }
+    limiters?: { search?: RateLimiter; fetch?: RateLimiter; data?: RateLimiter }
     /** Chiamato a ogni risposta 429 (diagnostica: in condizioni normali non deve accadere). */
     onRateLimited?: (kind: Kind, attempt: number) => void
   }) {
@@ -57,7 +71,8 @@ export class TradeClient {
     this.fetchImpl = opts.fetchImpl ?? ((input, init) => globalThis.fetch(input, init))
     this.limiters = {
       search: opts.limiters?.search ?? new RateLimiter(),
-      fetch: opts.limiters?.fetch ?? new RateLimiter()
+      fetch: opts.limiters?.fetch ?? new RateLimiter(),
+      data: opts.limiters?.data ?? new RateLimiter()
     }
   }
 
@@ -88,6 +103,17 @@ export class TradeClient {
     return responses.flatMap((r) => (Array.isArray(r?.result) ? r.result : []))
   }
 
+  /** League di PoE2 disponibili sul trade (id usati nelle ricerche), nell'ordine del sito. */
+  async leagues(priority: Priority): Promise<string[]> {
+    const json = await this.enqueue(
+      'data',
+      `${BASE}/api/trade2/data/leagues`,
+      { method: 'GET' },
+      priority
+    )
+    return parseLeagues(json)
+  }
+
   /** Nessuna richiesta user/stash in coda o in volo. */
   isIdle(): boolean {
     const busy = (j: Job): boolean => j.priority !== 'background'
@@ -100,7 +126,11 @@ export class TradeClient {
 
   /** Millisecondi di blocco residui imposti dal sito del trade (il più lungo tra search e fetch). */
   blockedForMs(): number {
-    return Math.max(this.limiters.search.blockedForMs(), this.limiters.fetch.blockedForMs())
+    return Math.max(
+      this.limiters.search.blockedForMs(),
+      this.limiters.fetch.blockedForMs(),
+      this.limiters.data.blockedForMs()
+    )
   }
 
   private enqueue(

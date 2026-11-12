@@ -40,6 +40,9 @@ let settingsPath: string
 let store: ListingStore | null = null
 let service: EvaluatorService | null = null
 let collector: BackgroundCollector | null = null
+let tradeClient: TradeClient | null = null
+/** League scaricate dal trade, tenute per 10 minuti (la finestra impostazioni le chiede a ogni apertura). */
+let leaguesCache: { at: number; ids: string[] } | null = null
 let statsTimer: ReturnType<typeof setInterval> | null = null
 let hotkeys: { quick: Hotkey | null; deep: Hotkey | null } = { quick: null, deep: null }
 let lastItemText = ''
@@ -181,6 +184,18 @@ function registerIpc(): void {
     if (prev.league !== settings.league) void service?.reloadRates()
     return settings
   })
+  ipcMain.handle(IPC.leagues, async () => {
+    if (leaguesCache && Date.now() - leaguesCache.at < 10 * 60_000) return leaguesCache.ids
+    if (!tradeClient) return []
+    try {
+      const ids = await tradeClient.leagues('user')
+      leaguesCache = { at: Date.now(), ids }
+      return ids
+    } catch (e) {
+      log(`league non scaricate: ${errMsg(e)}`)
+      return []
+    }
+  })
   // Click sul badge: analisi approfondita dell'ultimo oggetto catturato.
   ipcMain.on(IPC.deep, () => {
     const text = lastItemText
@@ -202,10 +217,10 @@ async function startServices(): Promise<void> {
   log(`database aperto: ${dbPath}`)
 
   const userAgent = `POEvaluator/${app.getVersion()} (+https://github.com/xellafe/POEvaluator)`
-  const client = new TradeClient({
+  const client = (tradeClient = new TradeClient({
     userAgent,
     onRateLimited: (kind, attempt) => log(`429 dal trade (${kind}, tentativo ${attempt})`)
-  })
+  }))
   service = new EvaluatorService({
     client,
     store,
