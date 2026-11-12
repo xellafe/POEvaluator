@@ -105,10 +105,12 @@ export async function deepAnalysis(
   const contributions: NonNullable<Valuation['contributions']> = []
 
   if (basePrices.length >= 2) {
-    const baseMedian = median(basePrices)
+    // Le ricerche sono ordinate per prezzo crescente: le mediane di confronto usano lo stesso
+    // campione (i 10 più economici) delle ricerche secondarie; priceFor usa tutti i prezzi base.
+    const baseMedian = median([...basePrices].sort((a, b) => a - b).slice(0, SIDE_FETCH))
 
-    // 3. contributi
-    for (const m of queryMods) {
+    // 3. contributi (con un solo mod la ricerca senza filtri stat non ha senso)
+    for (const m of queryMods.length > 1 ? queryMods : []) {
       if (!budgetLeft()) break
       const r = await search({ mods: queryMods.filter((x) => x !== m) })
       const prices = await fetchPrices(r, SIDE_FETCH)

@@ -305,6 +305,48 @@ describe('deepAnalysis', () => {
     expect(searches.length).toBe(3)
   })
 
+  it('mod neutro con prezzi crescenti: delta ~0 (stesso campione di 10 prezzi)', async () => {
+    // stessa distribuzione con e senza il mod: 10, 15, ..., 105 (fetch base 20, altre 10)
+    const { client } = fakeClient(() => ({ total: 20, prices: range(20, (i) => 10 + i * 5) }))
+    const v = await deepAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))
+    expect(v.contributions).toEqual([
+      { statId: MOVE, text: `text ${MOVE}`, deltaExalted: 0 },
+      { statId: LIFE, text: `text ${LIFE}`, deltaExalted: 0 }
+    ])
+    // priceFor resta su tutti i 20 prezzi base (mediana 57.5 -> ottimo, p60 = 67)
+    expect(v.comparablesCount).toBe(20)
+    expect(v.price?.suggested).toBe(67)
+  })
+
+  it('slot liberi: confronto sui 10 prezzi base più economici', async () => {
+    // base 10..200 (10 più economici: mediana 55; tutti e 20: 105); slot liberi 70..88 (mediana 79)
+    const { client } = fakeClient((q) =>
+      pseudoIdsOf(q).length > 0
+        ? { total: 20, prices: range(20, (i) => 70 + i * 2) }
+        : { total: 20, prices: range(20, (i) => 10 + i * 10) }
+    )
+    const v = await deepAnalysis(
+      boots([mod(MOVE, 25, 'prefix'), mod(FIRE_RES, 30, 'suffix')], {
+        openPrefixes: 0,
+        openSuffixes: 0
+      }),
+      deps(client)
+    )
+    expect(v.warnings).toContain('Oggetti simili con slot liberi valgono di più (~79 ex)')
+  })
+
+  it('query finale con un solo mod: nessuna ricerca di contributo', async () => {
+    const { client, searches } = fakeClient((q) =>
+      modIdsOf(q).length >= 2
+        ? { total: 2, prices: [10, 20] }
+        : { total: 12, prices: range(12, () => 100) }
+    )
+    const v = await deepAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))
+    expect(searches.map((q) => modIdsOf(q))).toEqual([[MOVE, LIFE], [MOVE]])
+    expect(v.contributions).toBeUndefined()
+    expect(v.comparablesCount).toBe(12)
+  })
+
   it('onProgress: total === maxSearches, una chiamata per ricerca e una finale', async () => {
     const { client } = fakeClient(() => ({ total: 12, prices: range(12, () => 100) }))
     const calls: [number, number][] = []
