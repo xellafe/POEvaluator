@@ -139,6 +139,27 @@ describe('parseItemText', () => {
   it.each(['unique.txt', 'gem.txt'])('%s -> unsupported_rarity', (name) => {
     expect(parseItemText(fixture(name))).toEqual({ ok: false, reason: 'unsupported_rarity' })
   })
+
+  it('due mod con la stessa stat (mana massimo): un solo ItemMod con valori sommati (D5)', () => {
+    const item = parseRare('rare-boots-two-mana.txt')
+    const base = parseRare('rare-boots.txt')
+    const manaId = base.explicits.find((m) => m.text === '+56 to maximum Mana')!.statId
+    const mana = item.explicits.filter((m) => m.statId === manaId)
+    expect(mana).toHaveLength(1)
+    expect(mana[0]).toMatchObject({
+      statId: manaId,
+      // nell'ordine del testo: il mod da 28 (Lustrous, tier 9) viene prima
+      text: '+28 to maximum Mana · +56 to maximum Mana',
+      values: [28, 56],
+      tradeValue: 84,
+      type: 'prefix',
+      tier: 9,
+      range: { min: 75, max: 98 }
+    })
+    // gli slot occupati restano due prefix distinti
+    expect(item.explicits).toHaveLength(4)
+    expect(item.openPrefixes).toBe(0)
+  })
 })
 
 describe('parseTradeLine (id canonici, R14)', () => {

@@ -90,6 +90,16 @@ describe('toListing', () => {
     expect(l.mods.some((m) => m.statId.startsWith('fractured.'))).toBe(false)
   })
 
+  it('due mod con la stessa stat (mana massimo): un solo mod con i valori sommati (D5)', () => {
+    const raw = structuredClone(fixture.result[2]) as { item: { explicitMods: Obj[] } }
+    raw.item.explicitMods = [
+      { description: '+97 to maximum Mana', hash: 'stat.explicit.stat_1050105434', mods: [] },
+      { description: '+28 to maximum Mana', hash: 'stat.explicit.stat_1050105434', mods: [] }
+    ]
+    const l = toListing(raw, 'Standard', toExalted, now, BOOTS)!
+    expect(l.mods).toEqual([{ statId: 'explicit.stat_1050105434', value: 125 }])
+  })
+
   it('id alternativo della stessa stat (attack speed globale dei guanti) -> id canonico', () => {
     const raw = structuredClone(fixture.result[2]) as { item: { explicitMods: Obj[] } }
     raw.item.explicitMods.push({

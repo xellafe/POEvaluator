@@ -176,7 +176,7 @@ export function parseItemText(text: string): ParseResult {
       itemLevel: item.itemLevel ?? 0,
       quality: item.quality ?? 0,
       corrupted: item.isCorrupted,
-      explicits,
+      explicits: mergeSameStat(explicits),
       implicits,
       openPrefixes: Math.max(0, maxSlots - prefixes),
       openSuffixes: Math.max(0, maxSlots - suffixes)
@@ -218,6 +218,34 @@ function toItemMods(mod: ParsedModifier, type: ModType, tradeKeys: string[]): It
       itemMod.range = { min: stat.roll.min, max: stat.roll.max }
     }
     out.push(itemMod)
+  }
+  return out
+}
+
+/**
+ * Explicit con lo stesso statId (es. due mod di mana massimo) uniti in un solo ItemMod, come il
+ * trade che li somma: tradeValue e range sommati, testi uniti con " · ", tipo e tier del primo.
+ * Gli slot occupati sono già contati per mod, non per stat.
+ */
+function mergeSameStat(mods: ItemMod[]): ItemMod[] {
+  const out: ItemMod[] = []
+  const byStat = new Map<string, ItemMod>()
+  for (const m of mods) {
+    const prev = byStat.get(m.statId)
+    if (!prev) {
+      const copy = { ...m, values: [...m.values] }
+      byStat.set(m.statId, copy)
+      out.push(copy)
+      continue
+    }
+    prev.text = `${prev.text} · ${m.text}`
+    prev.values.push(...m.values)
+    prev.tradeValue += m.tradeValue
+    if (prev.range && m.range) {
+      prev.range = { min: prev.range.min + m.range.min, max: prev.range.max + m.range.max }
+    } else {
+      delete prev.range
+    }
   }
   return out
 }
