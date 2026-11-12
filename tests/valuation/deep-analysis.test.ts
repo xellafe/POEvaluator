@@ -353,10 +353,10 @@ describe('deepAnalysis', () => {
     expect(v.comparablesCount).toBe(12)
   })
 
-  it('onProgress: total === maxSearches, una chiamata per ricerca e una finale', async () => {
+  it('onProgress: total === maxSearches, una chiamata per ricerca; searches = ricerche eseguite', async () => {
     const { client } = fakeClient(() => ({ total: 12, prices: range(12, () => 100) }))
     const calls: [number, number][] = []
-    await deepAnalysis(
+    const v = await deepAnalysis(
       boots([mod(MOVE, 25), mod(LIFE, 80)]),
       deps(client, { maxSearches: 6 }),
       (d, t) => calls.push([d, t])
@@ -364,9 +364,61 @@ describe('deepAnalysis', () => {
     expect(calls).toEqual([
       [1, 6],
       [2, 6],
-      [3, 6],
-      [6, 6]
+      [3, 6]
     ])
+    expect(v.searches).toBe(3)
+  })
+
+  it('nessun risultato: nessun verdetto (dati insufficienti) e messaggio della deep', async () => {
+    const { client } = fakeClient(() => ({ total: 0, prices: [] }))
+    const v = await deepAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))
+    expect(v.verdict).toBeNull()
+    expect(v.price).toBeUndefined()
+    expect(v.confidence).toBe('bassa')
+    expect(v.comparablesCount).toBe(0)
+    expect(v.warnings).toEqual(['Non ho trovato oggetti simili in vendita'])
+  })
+
+  it('inserzioni tutte scartate (valuta non convertibile): nessun verdetto', async () => {
+    const { client } = fakeClient(() => ({ total: 12, prices: range(12, () => 100) }))
+    const v = await deepAnalysis(boots([mod(MOVE, 25)]), deps(client, { toExalted: () => null }))
+    expect(v.verdict).toBeNull()
+    expect(v.warnings).toEqual(['Non ho trovato oggetti simili in vendita'])
+  })
+
+  it('rilassamento: avvisa degli affissi esclusi e limita la confidenza a media', async () => {
+    const { client } = fakeClient((q) =>
+      modIdsOf(q).length >= 4
+        ? { total: 2, prices: [10, 20] }
+        : { total: 12, prices: range(12, () => 50) }
+    )
+    const v = await deepAnalysis(boots(fourMods()), deps(client))
+    expect(v.verdict).toBe('ottimo')
+    // 12 prezzi uguali darebbero confidenza alta
+    expect(v.confidence).toBe('media')
+    expect(v.warnings).toContain(
+      'Stima basata su 3 affissi su 4: per gli altri non ci sono abbastanza oggetti simili'
+    )
+  })
+
+  it('rilassamento fino a un solo affisso: avviso al singolare', async () => {
+    const { client } = fakeClient((q) =>
+      modIdsOf(q).length >= 2
+        ? { total: 2, prices: [10, 20] }
+        : { total: 12, prices: range(12, () => 50) }
+    )
+    const v = await deepAnalysis(boots(fourMods()), deps(client))
+    expect(v.warnings).toContain(
+      'Stima basata su 1 affisso su 4: per gli altri non ci sono abbastanza oggetti simili'
+    )
+    expect(v.confidence).toBe('media')
+  })
+
+  it('senza rilassamento nessun avviso sugli affissi e confidenza piena', async () => {
+    const { client } = fakeClient(() => ({ total: 12, prices: range(12, () => 50) }))
+    const v = await deepAnalysis(boots(fourMods()), deps(client))
+    expect(v.confidence).toBe('alta')
+    expect(v.warnings.some((w) => w.startsWith('Stima basata su'))).toBe(false)
   })
 
   it('onProgress con maxSearches di default (8)', async () => {

@@ -131,13 +131,13 @@ describe('priceFor', () => {
     expect(r.warnings).toEqual([])
   })
 
-  it('array vuoto: pessimo, bassa, warning, nessun prezzo', () => {
+  it('array vuoto: nessun verdetto (dati insufficienti, R26), bassa, nessun prezzo', () => {
     const r = priceFor([], T)
     expect(r).toEqual({
-      verdict: 'pessimo',
+      verdict: null,
       confidence: 'bassa',
       comparablesCount: 0,
-      warnings: ['Troppo pochi oggetti simili sul mercato']
+      warnings: []
     })
     expect(r.price).toBeUndefined()
   })

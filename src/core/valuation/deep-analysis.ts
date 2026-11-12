@@ -25,6 +25,14 @@ const MIN_BASE_TOTAL = 5
 const BASE_FETCH = 20
 const SIDE_FETCH = 10
 
+/** Messaggio di "Dati insufficienti" dell'analisi approfondita (nessun verdetto, R26). */
+export const DEEP_NO_DATA_MESSAGE = 'Non ho trovato oggetti simili in vendita'
+
+/** Avviso quando il rilassamento ha tolto affissi dalla ricerca finale. */
+export const partialModsWarning = (used: number, total: number): string =>
+  `Stima basata su ${used} ${used === 1 ? 'affisso' : 'affissi'} su ${total}: ` +
+  'per gli altri non ci sono abbastanza oggetti simili'
+
 export const openSlotsWarning = (medianExalted: number): string =>
   `Gli oggetti simili con uno slot libero si vendono intorno a ${roundPrice(medianExalted)} ex`
 
@@ -52,6 +60,9 @@ const median = (prices: number[]): number =>
  * 2. fetch dei primi 20 risultati, salvati nello store;
  * 3. contributo di ogni mod della query finale: mediana(base) - mediana(senza il mod);
  * 4. se l'oggetto non ha slot liberi, confronto con oggetti simili con uno slot libero.
+ * Senza prezzi utilizzabili il verdetto è null (R26); se il rilassamento ha tolto affissi la
+ * stima lo dice in un avviso e la confidenza non supera "media". `searches` riporta le ricerche
+ * eseguite.
  * Ogni ricerca conta nel budget `maxSearches`; gli errori del client vengono propagati
  * (le inserzioni già recuperate restano salvate).
  */
@@ -140,11 +151,21 @@ export async function deepAnalysis(
   }
 
   const priced = priceFor(basePrices, settings.thresholds)
-  onProgress?.(maxSearches, maxSearches)
   const result: Valuation = {
     ...priced,
     warnings: [...priced.warnings, ...extraWarnings],
-    tradeUrl: tradeUrl(league, base.id)
+    tradeUrl: tradeUrl(league, base.id),
+    searches
+  }
+  if (priced.verdict === null) {
+    // nessun prezzo utilizzabile: nessun verdetto, solo la spiegazione
+    result.warnings = [DEEP_NO_DATA_MESSAGE]
+    return result
+  }
+  if (queryMods.length < mods.length) {
+    // stima su una parte degli affissi: non è la stima dell'oggetto intero (I3)
+    result.warnings.push(partialModsWarning(queryMods.length, mods.length))
+    if (result.confidence === 'alta') result.confidence = 'media'
   }
   if (contributions.length > 0) result.contributions = contributions
   return result

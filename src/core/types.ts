@@ -76,12 +76,18 @@ export interface Listing {
 }
 
 export interface Valuation {
-  verdict: Verdict
+  /**
+   * null: nessun prezzo utilizzabile, quindi nessun giudizio ("Dati insufficienti", R26).
+   * In quel caso `warnings[0]` spiega il motivo.
+   */
+  verdict: Verdict | null
   confidence: Confidence
   /** exalted */
   price?: { suggested: number; min: number; max: number }
   contributions?: { statId: string; text: string; deltaExalted: number }[]
   comparablesCount: number
   tradeUrl?: string
+  /** Ricerche trade eseguite dall'analisi approfondita (solo deep). */
+  searches?: number
   warnings: string[]
 }

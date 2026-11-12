@@ -48,3 +48,27 @@ export function mergeSettings(saved: unknown): Settings {
     maxListingAgeDays: num(s.maxListingAgeDays, d.maxListingAgeDays)
   }
 }
+
+/** Combinazione inviata al gioco per copiare l'oggetto: l'hook la vede, non può essere una hotkey. */
+const COPY_COMBO = 'alt+ctrl+c'
+
+const MODIFIER_ALIASES: Record<string, string> = { control: 'ctrl' }
+
+/** Forma canonica di una hotkey: minuscole, modificatori in ordine alfabetico, tasto in fondo. */
+function normalizeHotkey(spec: string): string {
+  const parts = spec.split('+').map((p) => p.trim().toLowerCase())
+  const key = parts.pop() ?? ''
+  const mods = parts.map((p) => MODIFIER_ALIASES[p] ?? p).sort()
+  return [...mods, key].join('+')
+}
+
+/** Errore delle hotkey (Ctrl+Alt+C riservata, hotkey uguali); null se vanno bene. */
+export function hotkeysError(hotkeys: Settings['hotkeys']): string | null {
+  const quick = normalizeHotkey(hotkeys.quick)
+  const deep = normalizeHotkey(hotkeys.deep)
+  if (quick === COPY_COMBO || deep === COPY_COMBO) {
+    return "Combinazione riservata alla copia dell'oggetto"
+  }
+  if (quick === deep) return 'Le due hotkey devono essere diverse'
+  return null
+}

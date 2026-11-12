@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SETTINGS, mergeSettings } from '../src/core/settings'
+import { DEFAULT_SETTINGS, hotkeysError, mergeSettings } from '../src/core/settings'
+
+describe('hotkeysError', () => {
+  it('default validi', () => {
+    expect(hotkeysError(DEFAULT_SETTINGS.hotkeys)).toBeNull()
+  })
+
+  it('rifiuta Ctrl+Alt+C (in qualsiasi ordine e maiuscole)', () => {
+    const msg = "Combinazione riservata alla copia dell'oggetto"
+    expect(hotkeysError({ quick: 'Ctrl+Alt+C', deep: 'Alt+Shift+D' })).toBe(msg)
+    expect(hotkeysError({ quick: 'Alt+D', deep: 'alt+control+c' })).toBe(msg)
+    expect(hotkeysError({ quick: 'Ctrl+Alt+Shift+C', deep: 'Alt+D' })).toBeNull()
+  })
+
+  it('rifiuta due hotkey uguali (anche con i modificatori in ordine diverso)', () => {
+    const msg = 'Le due hotkey devono essere diverse'
+    expect(hotkeysError({ quick: 'Alt+D', deep: 'Alt+D' })).toBe(msg)
+    expect(hotkeysError({ quick: 'Shift+Alt+D', deep: 'alt+shift+d' })).toBe(msg)
+  })
+})
 
 describe('mergeSettings', () => {
   it('restituisce i default se non ci sono impostazioni salvate', () => {

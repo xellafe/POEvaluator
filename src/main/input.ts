@@ -56,6 +56,24 @@ export function matchesHotkey(e: KeyEventLike, hk: Hotkey): boolean {
   )
 }
 
+/**
+ * Ripetizione automatica del tasto: tenendo premuta una hotkey arrivano più keydown senza keyup.
+ * `press` è true solo al primo keydown; `release` (al keyup) riabilita il tasto.
+ */
+export class KeyRepeatFilter {
+  private readonly down = new Set<number>()
+
+  press(keycode: number): boolean {
+    if (this.down.has(keycode)) return false
+    this.down.add(keycode)
+    return true
+  }
+
+  release(keycode: number): void {
+    this.down.delete(keycode)
+  }
+}
+
 export const CLIPBOARD_POLL_MS = 20
 export const CLIPBOARD_TIMEOUT_MS = 500
 

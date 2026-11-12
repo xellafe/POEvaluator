@@ -1,6 +1,6 @@
 // Finestra impostazioni: lega, hotkey, soglie del verdetto, raccolta dati.
 import { useEffect, useState, type JSX, type KeyboardEvent } from 'react'
-import type { Settings } from '../../core/settings'
+import { hotkeysError, type Settings } from '../../core/settings'
 import { hotkeyFromKeyEvent, hotkeyParts } from '../format'
 import { Icon } from './Icon'
 
@@ -35,7 +35,10 @@ function parseNum(text: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null
 }
 
-/** Impostazioni dal modulo; null se un campo non è valido (soglie anche in ordine crescente). */
+/**
+ * Impostazioni dal modulo; null se un campo non è valido (soglie anche in ordine crescente,
+ * hotkey diverse tra loro e da Ctrl+Alt+C).
+ */
 function fromForm(f: Form): Settings | null {
   const buono = parseNum(f.thresholds.buono)
   const ottimo = parseNum(f.thresholds.ottimo)
@@ -45,6 +48,7 @@ function fromForm(f: Form): Settings | null {
     return null
   }
   if (age === null || age < 1 || !(buono < ottimo && ottimo < eccellente)) return null
+  if (hotkeysError(f.hotkeys) !== null) return null
   return {
     league: f.league.trim(),
     hotkeys: f.hotkeys,
@@ -131,6 +135,7 @@ export function SettingsWindow(): JSX.Element {
   const thrInvalid = (key: ThresholdName): boolean => parseNum(t[key]) === null
   const [b, o, e] = [parseNum(t.buono), parseNum(t.ottimo), parseNum(t.eccellente)]
   const unordered = b !== null && o !== null && e !== null && !(b < o && o < e)
+  const hotkeyProblem = hotkeysError(form.hotkeys)
 
   return (
     <div className="window fill">
@@ -266,7 +271,7 @@ export function SettingsWindow(): JSX.Element {
       </div>
       <div className="w-foot">
         <span className="saved">
-          {unordered ? 'Le soglie devono essere in ordine crescente' : error}
+          {hotkeyProblem ?? (unordered ? 'Le soglie devono essere in ordine crescente' : error)}
         </span>
         <button className="btn ghost" onClick={close}>
           Annulla

@@ -16,7 +16,7 @@ type FailReason = Extract<ParseResult, { ok: false }>['reason']
 const CANNOT = 'Impossibile valutare'
 const UNSUPPORTED = 'Oggetto non supportato'
 
-export const MESSAGES: Record<FailReason | 'tradeError', EvalError> = {
+export const MESSAGES: Record<FailReason | 'tradeError' | 'noRates', EvalError> = {
   empty: {
     title: CANNOT,
     message: 'Nessun oggetto trovato: tieni il mouse sopra un oggetto e riprova'
@@ -35,6 +35,23 @@ export const MESSAGES: Record<FailReason | 'tradeError', EvalError> = {
   tradeError: {
     title: CANNOT,
     message: 'La ricerca sul trade non è riuscita: riprova tra poco'
+  },
+  noRates: {
+    title: CANNOT,
+    message: 'Tassi di cambio non ancora disponibili: riprova tra poco'
+  }
+}
+
+/** Oltre questa attesa imposta dal trade l'analisi approfondita non parte: risponde subito. */
+export const TRADE_PAUSE_THRESHOLD_MS = 10_000
+
+/** "Trade in pausa" con l'attesa arrotondata: in secondi, in minuti da 120 s in su. */
+export function tradePausedMessage(waitMs: number): EvalError {
+  const secs = Math.max(1, Math.round(waitMs / 1000))
+  const wait = secs >= 120 ? `${Math.round(secs / 60)} min` : `${secs} s`
+  return {
+    title: 'Trade in pausa',
+    message: `Il sito del trade ha limitato le richieste: riprova tra ${wait}`
   }
 }
 
@@ -122,9 +139,22 @@ export class EvaluatorService {
     return { ok: true, item: parsed.item, valuation }
   }
 
+  /**
+   * Motivo per cui l'analisi approfondita non può partire ora (null se può): tassi non ancora
+   * disponibili (le inserzioni verrebbero tutte scartate) o trade in pausa per più di 10 s.
+   */
+  deepUnavailable(): EvalError | null {
+    if (this.toExalted(1, 'exalted') === null) return MESSAGES.noRates
+    const blocked = this.deps.client.blockedForMs()
+    if (blocked > TRADE_PAUSE_THRESHOLD_MS) return tradePausedMessage(blocked)
+    return null
+  }
+
   async deep(text: string, onProgress: (done: number, total: number) => void): Promise<EvalResult> {
     const parsed = parseItemText(text)
     if (!parsed.ok) return { ok: false, ...MESSAGES[parsed.reason] }
+    const unavailable = this.deepUnavailable()
+    if (unavailable) return { ok: false, ...unavailable }
     const { client, store, settings, now } = this.deps
     try {
       const valuation = await deepAnalysis(

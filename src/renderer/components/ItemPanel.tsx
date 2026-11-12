@@ -123,18 +123,20 @@ function rangeBar(
 function Done({ state, league, onClose }: Props & { state: PanelState }): JSX.Element {
   const { item, exaltedPerDivine, progress } = state
   const v = state.result as Valuation
+  // ricerche realmente eseguite (dato del core); in mancanza, l'ultimo avanzamento ricevuto
+  const searches = v.searches ?? progress.done
   const price = v.price ? priceParts(v.price.suggested, exaltedPerDivine) : null
   const bar = v.price ? rangeBar(v.price.min, v.price.max, v.price.suggested) : null
   const contributions = [...(v.contributions ?? [])].sort((a, b) => b.deltaExalted - a.deltaExalted)
   const maxDelta = Math.max(1e-9, ...contributions.map((c) => Math.abs(c.deltaExalted)))
 
   return (
-    <div className={`panel v-${v.verdict}`}>
+    <div className={`panel v-${v.verdict ?? 'neutral'}`}>
       <Head item={item} onClose={onClose} />
       <div className="p-summary">
         <div className="p-row">
           <span className="p-verdict">
-            <Icon name={v.verdict} />
+            <Icon name={v.verdict ?? 'warn'} />
             {verdictLabel(v.verdict)}
           </span>
         </div>
@@ -168,7 +170,7 @@ function Done({ state, league, onClose }: Props & { state: PanelState }): JSX.El
           <div>
             <dt>Ricerche</dt>
             <dd>
-              {progress.done}/{progress.total}
+              {searches}/{progress.total}
             </dd>
           </div>
         </dl>

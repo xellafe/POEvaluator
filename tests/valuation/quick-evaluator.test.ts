@@ -178,12 +178,15 @@ describe('quickEvaluate', () => {
     expect(v.confidence).toBe('bassa')
   })
 
-  it('classe senza pesi -> pessimo con warning dedicato', () => {
+  it('classe senza pesi -> nessun verdetto (dati insufficienti) con il messaggio del quick', () => {
     const item = boots([mod(LIFE, 84, 84)], { itemClass: 'map.tablet' })
     const v = quickEvaluate(item, store, DEFAULT_SETTINGS, NOW)
-    expect(v.verdict).toBe('pessimo')
+    expect(v.verdict).toBeNull()
     expect(v.confidence).toBe('bassa')
-    expect(v.warnings).toContain('Classe di oggetto senza pesi: verdetto non disponibile')
+    expect(v.price).toBeUndefined()
+    expect(v.warnings).toEqual([
+      "Non ho abbastanza oggetti simili per valutarlo: usa l'analisi approfondita"
+    ])
   })
 
   it('jewel: ha pesi, nessun warning "senza pesi"', () => {
@@ -193,7 +196,7 @@ describe('quickEvaluate', () => {
       openSuffixes: 1
     })
     const v = quickEvaluate(item, store, DEFAULT_SETTINGS, NOW)
-    expect(v.warnings).not.toContain('Classe di oggetto senza pesi: verdetto non disponibile')
+    expect(v.verdict).not.toBeNull()
     expect(v.warnings).toContain(
       "Pochi oggetti simili raccolti: il verdetto è indicativo, usa l'analisi approfondita"
     )

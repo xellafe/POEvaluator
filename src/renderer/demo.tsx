@@ -103,6 +103,19 @@ const BADGES: [string, BadgeState][] = [
       })
     }
   ],
+  [
+    'Dati insufficienti',
+    {
+      type: 'result',
+      item: ITEM,
+      exaltedPerDivine: RATE,
+      valuation: v({
+        verdict: null,
+        confidence: 'bassa',
+        warnings: ["Non ho abbastanza oggetti simili per valutarlo: usa l'analisi approfondita"]
+      })
+    }
+  ],
   ['Caricamento', { type: 'loading' }],
   [
     'Errore · testo avanzato',
@@ -161,13 +174,14 @@ const PANELS: [string, PanelState][] = [
       item: ITEM,
       quick: QUICK,
       exaltedPerDivine: RATE,
-      progress: { done: 8, total: 8 },
+      progress: { done: 5, total: 8 },
       result: v({
         verdict: 'ottimo',
         confidence: 'alta',
         price: { suggested: 280, min: 220, max: 340 },
         comparablesCount: 23,
         tradeUrl: 'https://www.pathofexile.com/trade2/search/poe2/Standard/abc',
+        searches: 5,
         contributions: [
           { statId: 'a', text: '30% increased Movement Speed', deltaExalted: 118 },
           { statId: 'b', text: '+74 to maximum Life', deltaExalted: 96 },

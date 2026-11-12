@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   captureClipboard,
+  KeyRepeatFilter,
   matchesHotkey,
   parseHotkey,
   type ClipboardDeps,
@@ -17,6 +18,25 @@ const ev = (
   ctrlKey: mods.ctrl ?? false,
   shiftKey: mods.shift ?? false,
   metaKey: false
+})
+
+describe('KeyRepeatFilter', () => {
+  it('ignora i keydown ripetuti dello stesso tasto fino al keyup', () => {
+    const f = new KeyRepeatFilter()
+    expect(f.press(32)).toBe(true)
+    expect(f.press(32)).toBe(false)
+    expect(f.press(32)).toBe(false)
+    f.release(32)
+    expect(f.press(32)).toBe(true)
+  })
+
+  it('tasti diversi sono indipendenti', () => {
+    const f = new KeyRepeatFilter()
+    expect(f.press(32)).toBe(true)
+    expect(f.press(46)).toBe(true)
+    f.release(46)
+    expect(f.press(32)).toBe(false)
+  })
 })
 
 describe('parseHotkey', () => {

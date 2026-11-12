@@ -2,7 +2,7 @@
 
 Desktop tool for Path of Exile 2 that estimates the value of rare items based on similar listings on the official trade site.
 
-Unlike classic price checkers, it does not just speed up the search: it weighs every affix (including the ones that lower the value), gives a quick verdict (*Pessimo / Buono / Ottimo / Eccellente*) and, on demand, an in-depth analysis with a suggested price range and the contribution of each affix.
+Unlike classic price checkers, it does not just speed up the search: it weighs every affix (including the ones that lower the value), gives a quick verdict (*Pessimo / Buono / Ottimo / Eccellente*, or *Dati insufficienti* when there is no data to judge) and, on demand, an in-depth analysis with a suggested price range and the contribution of each affix.
 
 The interface is in Italian. Design docs (in Italian) are in [`docs/superpowers/specs/`](docs/superpowers/specs/).
 

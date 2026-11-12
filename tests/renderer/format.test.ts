@@ -70,6 +70,10 @@ describe('verdictLabel', () => {
     expect(verdictLabel('ottimo')).toBe('Ottimo')
     expect(verdictLabel('eccellente')).toBe('Eccellente')
   })
+
+  it('nessun verdetto: "Dati insufficienti"', () => {
+    expect(verdictLabel(null)).toBe('Dati insufficienti')
+  })
 })
 
 describe('itemClassLabel', () => {

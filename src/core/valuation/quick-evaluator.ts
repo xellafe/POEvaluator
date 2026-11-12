@@ -13,7 +13,16 @@ const UNWEIGHTED = 0.1
 
 export const FEW_DATA_WARNING =
   "Pochi oggetti simili raccolti: il verdetto è indicativo, usa l'analisi approfondita"
-export const NO_WEIGHTS_WARNING = 'Classe di oggetto senza pesi: verdetto non disponibile'
+/** Messaggio di "Dati insufficienti" della valutazione rapida (nessun verdetto, R26). */
+export const QUICK_NO_DATA_MESSAGE =
+  "Non ho abbastanza oggetti simili per valutarlo: usa l'analisi approfondita"
+
+const noData = (): Valuation => ({
+  verdict: null,
+  confidence: 'bassa',
+  comparablesCount: 0,
+  warnings: [QUICK_NO_DATA_MESSAGE]
+})
 
 /**
  * Verdetto istantaneo senza rete: kNN sui listing locali se ce ne sono abbastanza,
@@ -71,6 +80,7 @@ function knn(
     nearest.map((n) => n.price),
     settings.thresholds
   )
+  if (result.verdict === null) return noData()
   return {
     ...result,
     // pochi vicini e niente verifica sul mercato: mai più di media
@@ -114,14 +124,8 @@ function verdictForScore(score: number): Verdict {
 }
 
 function fallback(item: RareItem, weights: Weights | undefined): Valuation {
-  if (!weights) {
-    return {
-      verdict: 'pessimo',
-      confidence: 'bassa',
-      comparablesCount: 0,
-      warnings: [NO_WEIGHTS_WARNING]
-    }
-  }
+  // classe senza pesi (es. tavolette): nessun dato per giudicare
+  if (!weights) return noData()
   return {
     verdict: verdictForScore(weightScore(item, weights)),
     confidence: 'bassa',

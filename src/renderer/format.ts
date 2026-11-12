@@ -59,8 +59,9 @@ const VERDICT_LABELS: Record<Verdict, string> = {
   eccellente: 'Eccellente'
 }
 
-export function verdictLabel(v: Verdict): string {
-  return VERDICT_LABELS[v]
+/** Etichetta del verdetto; null (nessun prezzo utilizzabile, R26) -> "Dati insufficienti". */
+export function verdictLabel(v: Verdict | null): string {
+  return v === null ? 'Dati insufficienti' : VERDICT_LABELS[v]
 }
 
 /** Numero di tacche dell'indicatore di affidabilità. */

@@ -57,10 +57,17 @@ const SUGGESTED_PERCENTILE: Partial<Record<Verdict, number>> = {
   eccellente: 0.75
 }
 
+/**
+ * Verdetto, confidenza e prezzo dai prezzi in exalted. Senza prezzi utilizzabili il verdetto è
+ * null (R26: nessun dato non vuol dire Pessimo); il messaggio lo aggiunge il chiamante.
+ */
 export function priceFor(prices: number[], t: Settings['thresholds']): Result {
   const clean = cleanPrices(prices)
+  if (clean.length === 0) {
+    return { verdict: null, confidence: 'bassa', comparablesCount: 0, warnings: [] }
+  }
   if (clean.length < 2) {
-    const verdict: Verdict = clean.length === 1 ? verdictFor(clean[0], t) : 'pessimo'
+    const verdict = verdictFor(clean[0], t)
     const warnings = ['Troppo pochi oggetti simili sul mercato']
     if (verdict === 'eccellente') warnings.push(EXCEPTIONAL_WARNING)
     return { verdict, confidence: 'bassa', comparablesCount: clean.length, warnings }

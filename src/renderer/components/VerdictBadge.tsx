@@ -84,6 +84,36 @@ export function VerdictBadge({ state, deepHotkey, onDeep }: Props): JSX.Element 
   }
 
   const { item, valuation: v, exaltedPerDivine } = state
+  const foot = (
+    <div className="b-foot">
+      <Keys hotkey={deepHotkey} /> per l&apos;analisi approfondita
+    </div>
+  )
+
+  if (v.verdict === null) {
+    // nessun prezzo utilizzabile (R26): badge neutro, il primo avviso spiega il motivo
+    const [message, ...others] = v.warnings
+    return (
+      <div
+        className="badge clickable v-neutral"
+        role="button"
+        tabIndex={-1}
+        title="Analisi approfondita"
+        onClick={onDeep}
+      >
+        <div className="b-body">
+          <div className="b-verdict plain">
+            <Icon name="warn" />
+            {verdictLabel(null)}
+          </div>
+          {message && <p className="b-msg">{message}</p>}
+          <Warnings warnings={others} />
+        </div>
+        {foot}
+      </div>
+    )
+  }
+
   const price = v.price ? priceParts(v.price.suggested, exaltedPerDivine) : null
   const meta = [
     v.price ? `Prezzi ${formatRange(v.price.min, v.price.max, exaltedPerDivine)}` : null,
@@ -115,9 +145,7 @@ export function VerdictBadge({ state, deepHotkey, onDeep }: Props): JSX.Element 
         {meta.length > 0 && <div className="b-meta">{meta.join(' · ')}</div>}
         <Warnings warnings={v.warnings} />
       </div>
-      <div className="b-foot">
-        <Keys hotkey={deepHotkey} /> per l&apos;analisi approfondita
-      </div>
+      {foot}
     </div>
   )
 }

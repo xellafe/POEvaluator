@@ -21,10 +21,10 @@ import { TradeClient } from '../core/trade/trade-client'
 import { DEFAULT_MAX_SEARCHES } from '../core/valuation/deep-analysis'
 import { copyHoveredItem } from './capture'
 import { EvaluatorService, type EvalResult } from './evaluator-service'
-import { matchesHotkey, parseHotkey, type Hotkey } from './input'
+import { KeyRepeatFilter, matchesHotkey, parseHotkey, type Hotkey } from './input'
 import { createTray, openSettingsWindow, Overlay } from './overlay'
 import { DEEP_BUSY_MESSAGE, RequestGate } from './request-gate'
-import { applyPatch, loadSettings, saveSettings } from './settings-file'
+import { applyPatch, loadSettings, saveSettings, settingsError } from './settings-file'
 
 const log = (msg: string): void => console.log(`[poevaluator] ${msg}`)
 const errMsg = (e: unknown): string => (e instanceof Error ? (e.stack ?? e.message) : String(e))
@@ -44,6 +44,9 @@ let statsTimer: ReturnType<typeof setInterval> | null = null
 let hotkeys: { quick: Hotkey | null; deep: Hotkey | null } = { quick: null, deep: null }
 let lastItemText = ''
 const gate = new RequestGate()
+/** Tenendo premuta una hotkey parte una sola valutazione (keydown ripetuti ignorati fino al keyup). */
+const keyRepeat = new KeyRepeatFilter()
+const KEYS = UiohookKey as unknown as Record<string, number>
 
 /** Hotkey e overlay attivi solo con PoE2 in primo piano (focus/blur da electron-overlay-window). */
 const isGameFocused = (): boolean => overlay?.gameFocused ?? false
@@ -73,10 +76,9 @@ function sendStarted(kind: StartedPayload['kind']): void {
 }
 
 function registerHotkeys(): void {
-  const keys = UiohookKey as unknown as Record<string, number>
   hotkeys = {
-    quick: parseHotkey(settings.hotkeys.quick, keys),
-    deep: parseHotkey(settings.hotkeys.deep, keys)
+    quick: parseHotkey(settings.hotkeys.quick, KEYS),
+    deep: parseHotkey(settings.hotkeys.deep, KEYS)
   }
   for (const k of ['quick', 'deep'] as const) {
     if (!hotkeys[k]) log(`hotkey ${k} non valida: "${settings.hotkeys[k]}"`)
@@ -116,6 +118,9 @@ async function requestDeep(getText: () => Promise<string>): Promise<void> {
       // la stima rapida (locale) apre subito il pannello; errori di lettura escono qui
       const quick = svc.quick(text)
       if (!quick.ok) return quick
+      // tassi mancanti o trade in pausa: errore subito, senza aprire il pannello
+      const unavailable = svc.deepUnavailable()
+      if (unavailable) return { ok: false, ...unavailable }
       send(IPC.analyzing, {
         item: quick.item,
         quick: quick.valuation,
@@ -138,7 +143,11 @@ function onKeydown(e: Parameters<typeof matchesHotkey>[0]): void {
   }
   if (!service) return
   const svc = service
-  if (hotkeys.quick && matchesHotkey(e, hotkeys.quick)) {
+  const isQuick = hotkeys.quick !== null && matchesHotkey(e, hotkeys.quick)
+  const isDeep = hotkeys.deep !== null && matchesHotkey(e, hotkeys.deep)
+  if (!isQuick && !isDeep) return
+  if (!keyRepeat.press(e.keycode)) return // ripetizione automatica del tasto tenuto premuto
+  if (isQuick) {
     // la rapida è locale: parte anche durante un'approfondita (solo la cattura è in serie)
     void gate.runQuick(() => {
       sendStarted('quick')
@@ -148,7 +157,7 @@ function onKeydown(e: Parameters<typeof matchesHotkey>[0]): void {
         return svc.quick(text)
       })
     })
-  } else if (hotkeys.deep && matchesHotkey(e, hotkeys.deep)) {
+  } else {
     void requestDeep(captureItem)
   }
 }
@@ -157,8 +166,12 @@ function registerIpc(): void {
   ipcMain.handle(IPC.getSettings, () => settings)
   ipcMain.handle(IPC.setSettings, (_e, patch: SettingsPatch) => {
     const prev = settings
-    settings = applyPatch(settings, patch ?? {})
-    saveSettings(settingsPath, settings)
+    const next = applyPatch(settings, patch ?? {})
+    // il modulo valida già le hotkey; qui la difesa per patch arrivate da altre strade
+    const invalid = settingsError(next, KEYS)
+    if (invalid) throw new Error(invalid)
+    saveSettings(settingsPath, next)
+    settings = next // in memoria solo dopo il salvataggio riuscito
     if (
       prev.hotkeys.quick !== settings.hotkeys.quick ||
       prev.hotkeys.deep !== settings.hotkeys.deep
@@ -220,6 +233,7 @@ async function startServices(): Promise<void> {
 
   registerHotkeys()
   uIOhook.on('keydown', onKeydown)
+  uIOhook.on('keyup', (e) => keyRepeat.release(e.keycode))
   uIOhook.start()
   log('hook tastiera avviato')
 }

@@ -35,6 +35,8 @@ interface FakeClient {
   searches: number
   fetches: number
   fail: boolean
+  blocked: number
+  blockedForMs(): number
   search(): Promise<unknown>
   fetchListings(ids: string[]): Promise<unknown[]>
 }
@@ -44,6 +46,10 @@ function makeClient(): FakeClient {
     searches: 0,
     fetches: 0,
     fail: false,
+    blocked: 0,
+    blockedForMs() {
+      return this.blocked
+    },
     async search() {
       this.searches++
       if (this.fail) throw new Error('HTTP 503')
@@ -81,6 +87,14 @@ function service(
     now: () => NOW,
     log: () => {}
   })
+}
+
+/** Servizio con i tassi già caricati. */
+async function withRates(): Promise<EvaluatorService> {
+  const s = service(async () => RATES)
+  await s.init()
+  await s.refreshRates()
+  return s
 }
 
 describe('EvaluatorService.quick', () => {
@@ -136,15 +150,47 @@ describe('EvaluatorService.quick', () => {
 })
 
 describe('EvaluatorService.deep', () => {
-  it('prima dei tassi restituisce comunque una Valuation (inserzioni scartate → bassa)', async () => {
-    const progress: [number, number][] = []
-    const r = await service().deep(rareBoots, (d, t) => progress.push([d, t]))
+  it('prima dei tassi: errore esplicito senza cercare sul trade', async () => {
+    const s = service()
+    const r = await s.deep(rareBoots, () => {})
+    expect(r).toEqual({
+      ok: false,
+      title: 'Impossibile valutare',
+      message: 'Tassi di cambio non ancora disponibili: riprova tra poco'
+    })
+    expect(s.deepUnavailable()).toEqual(MESSAGES.noRates)
+    expect(client.searches + client.fetches).toBe(0)
+  })
+
+  it('trade in pausa da più di 10 s: errore immediato con il tempo di attesa', async () => {
+    const s = await withRates()
+    client.blocked = 90_000
+    expect(await s.deep(rareBoots, () => {})).toEqual({
+      ok: false,
+      title: 'Trade in pausa',
+      message: 'Il sito del trade ha limitato le richieste: riprova tra 90 s'
+    })
+    client.blocked = 299_000
+    expect(s.deepUnavailable()).toEqual({
+      title: 'Trade in pausa',
+      message: 'Il sito del trade ha limitato le richieste: riprova tra 5 min'
+    })
+    client.blocked = 120_000
+    expect(s.deepUnavailable()?.message).toBe(
+      'Il sito del trade ha limitato le richieste: riprova tra 2 min'
+    )
+    expect(client.searches).toBe(0)
+    s.stop()
+  })
+
+  it("pausa breve (fino a 10 s): l'analisi parte e attende in coda", async () => {
+    const s = await withRates()
+    client.blocked = 10_000
+    expect(s.deepUnavailable()).toBeNull()
+    const r = await s.deep(rareBoots, () => {})
     expect(r.ok).toBe(true)
-    if (!r.ok) return
-    expect(r.valuation.confidence).toBe('bassa')
-    expect(r.valuation.comparablesCount).toBe(0)
     expect(client.searches).toBeGreaterThan(0)
-    expect(progress.length).toBeGreaterThan(0)
+    s.stop()
   })
 
   it('con i tassi caricati usa le inserzioni', async () => {
@@ -165,9 +211,11 @@ describe('EvaluatorService.deep', () => {
   })
 
   it('errore del trade: ok:false con messaggio', async () => {
+    const s = await withRates()
     client.fail = true
-    const r = await service().deep(rareBoots, () => {})
+    const r = await s.deep(rareBoots, () => {})
     expect(r).toEqual({ ok: false, ...MESSAGES.tradeError })
+    s.stop()
   })
 })
 

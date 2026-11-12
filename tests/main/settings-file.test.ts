@@ -3,7 +3,32 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS } from '../../src/core/settings'
-import { applyPatch, loadSettings, saveSettings } from '../../src/main/settings-file'
+import { applyPatch, loadSettings, saveSettings, settingsError } from '../../src/main/settings-file'
+
+describe('settingsError', () => {
+  const KEYS = { D: 32, C: 46, F5: 63 }
+  const withHotkeys = (quick: string, deep: string): typeof DEFAULT_SETTINGS => ({
+    ...DEFAULT_SETTINGS,
+    hotkeys: { quick, deep }
+  })
+
+  it('impostazioni valide: null', () => {
+    expect(settingsError(DEFAULT_SETTINGS, KEYS)).toBeNull()
+  })
+
+  it('hotkey non riconosciuta', () => {
+    expect(settingsError(withHotkeys('Alt+Q', 'Alt+D'), KEYS)).toBe('Hotkey non valida: "Alt+Q"')
+  })
+
+  it('Ctrl+Alt+C e hotkey uguali', () => {
+    expect(settingsError(withHotkeys('Ctrl+Alt+C', 'Alt+D'), KEYS)).toBe(
+      "Combinazione riservata alla copia dell'oggetto"
+    )
+    expect(settingsError(withHotkeys('Alt+D', 'Alt+D'), KEYS)).toBe(
+      'Le due hotkey devono essere diverse'
+    )
+  })
+})
 
 const dirs: string[] = []
 const tmp = (): string => {
