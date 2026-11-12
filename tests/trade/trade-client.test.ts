@@ -196,6 +196,29 @@ describe('TradeClient', () => {
     await client.fetchListings(['a'], 'q', 'user')
     expect(client.remainingRatio()).toBeCloseTo(0.2)
   })
+
+  it('blockedForMs: il blocco più lungo tra search e fetch', async () => {
+    const f = makeFetch((c) =>
+      c.init.method === 'POST'
+        ? json({ id: 'q', result: ['a'], total: 1 }, 200, {
+            'X-Rate-Limit-Rules': 'Ip',
+            'X-Rate-Limit-Ip': '10:10:60',
+            'X-Rate-Limit-Ip-State': '1:10:0'
+          })
+        : json({ result: [] }, 200, {
+            'X-Rate-Limit-Rules': 'Ip',
+            'X-Rate-Limit-Ip': '10:10:60',
+            'X-Rate-Limit-Ip-State': '1:10:90'
+          })
+    )
+    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    expect(client.blockedForMs()).toBe(0)
+    await client.search('Standard', {}, 'user')
+    expect(client.blockedForMs()).toBe(0)
+    await client.fetchListings(['a'], 'q', 'user')
+    expect(client.blockedForMs()).toBe(90_000)
+    expect(client.remainingRatio()).toBe(0)
+  })
 })
 
 describe('timeout', () => {

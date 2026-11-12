@@ -112,6 +112,29 @@ describe('RateLimiter', () => {
     expect(l.delayMs()).toBe(0)
   })
 
+  it('restrizione più lunga del periodo: remainingRatio 0 e blockedForMs fino alla fine del blocco', () => {
+    let t = 0
+    const l = new RateLimiter(() => t)
+    l.update(headers({ ...BASE, 'X-Rate-Limit-Ip-State': '9:10:0,9:60:300' }))
+    // scaduto il periodo della regola (60 s) il blocco di 300 s resta attivo
+    t = 61_000
+    expect(l.remainingRatio()).toBe(0)
+    expect(l.blockedForMs()).toBe(239_000)
+    t = 300_000
+    expect(l.blockedForMs()).toBe(0)
+    expect(l.remainingRatio()).toBe(1)
+  })
+
+  it('blockedForMs: 0 senza blocchi, Retry-After conta come blocco', () => {
+    let t = 0
+    const l = new RateLimiter(() => t)
+    expect(l.blockedForMs()).toBe(0)
+    l.update(headers({ 'Retry-After': '30' }))
+    t = 10_000
+    expect(l.blockedForMs()).toBe(20_000)
+    expect(l.remainingRatio()).toBe(0)
+  })
+
   it('remainingRatio con 4 hit su 8:10', () => {
     const l = new RateLimiter(() => 0)
     l.update(headers({ 'X-Rate-Limit-Rules': 'Ip', 'X-Rate-Limit-Ip': '8:10:60' }))

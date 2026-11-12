@@ -51,15 +51,23 @@ export class BackgroundCollector {
   ) {}
 
   async tick(): Promise<'collected' | 'skipped'> {
-    const { client, settings } = this.deps
-    const s = settings()
-    if (!s.backgroundCollection || !client.isIdle() || client.remainingRatio() < MIN_RATIO) {
-      return 'skipped'
-    }
-    if (this.seeds.length === 0) return 'skipped'
-    const seed = this.seeds[this.cursor]
-    this.cursor = (this.cursor + 1) % this.seeds.length
+    const { client, settings, toExalted } = this.deps
     try {
+      const s = settings()
+      if (
+        !s.backgroundCollection ||
+        !client.isIdle() ||
+        // restrizione del trade attiva: niente raccolta finché non scade (Review Focus 2)
+        client.blockedForMs() > 0 ||
+        client.remainingRatio() < MIN_RATIO ||
+        // senza tassi tutte le inserzioni verrebbero scartate: budget sprecato
+        toExalted(1, 'exalted') === null ||
+        this.seeds.length === 0
+      ) {
+        return 'skipped'
+      }
+      const seed = this.seeds[this.cursor]
+      this.cursor = (this.cursor + 1) % this.seeds.length
       await this.collect(seed, s.league)
       return 'collected'
     } catch (e) {

@@ -27,22 +27,25 @@ type Q = any
 interface FakeClient {
   idle: boolean
   ratio: number
+  blocked: number
   total: number
   searches: { league: string; query: Q; priority: string }[]
   fetches: { ids: string[]; queryId: string; priority: string }[]
   failNext: boolean
   isIdle(): boolean
   remainingRatio(): number
+  blockedForMs(): number
   search(league: string, query: object, priority: string): Promise<unknown>
   fetchListings(ids: string[], queryId: string, priority: string): Promise<unknown[]>
 }
 
 function makeClient(
-  over: Partial<{ idle: boolean; ratio: number; total: number }> = {}
+  over: Partial<{ idle: boolean; ratio: number; blocked: number; total: number }> = {}
 ): FakeClient {
   const c: FakeClient = {
     idle: over.idle ?? true,
     ratio: over.ratio ?? 1,
+    blocked: over.blocked ?? 0,
     total: over.total ?? 30,
     searches: [],
     fetches: [],
@@ -52,6 +55,9 @@ function makeClient(
     },
     remainingRatio() {
       return this.ratio
+    },
+    blockedForMs() {
+      return this.blocked
     },
     async search(league: string, query: object, priority: string) {
       this.searches.push({ league, query, priority })
@@ -73,7 +79,13 @@ function makeClient(
   return c
 }
 
-function setup(opts: { client?: FakeClient; settings?: Partial<Settings> } = {}): {
+function setup(
+  opts: {
+    client?: FakeClient
+    settings?: Partial<Settings>
+    toExalted?: (a: number, c: string) => number | null
+  } = {}
+): {
   client: FakeClient
   store: ListingStore
   settings: Settings
@@ -88,7 +100,7 @@ function setup(opts: { client?: FakeClient; settings?: Partial<Settings> } = {})
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     client: client as any,
     store,
-    toExalted,
+    toExalted: opts.toExalted ?? toExalted,
     settings: () => settings,
     now: () => now,
     log
@@ -131,6 +143,28 @@ describe('BackgroundCollector.tick', () => {
     const { client, collector } = setup({ client: makeClient({ ratio: 0.3 }) })
     expect(await collector.tick()).toBe('skipped')
     expect(client.searches).toHaveLength(0)
+  })
+
+  it('salta durante una restrizione del trade (Review Focus 2), anche con ratio pieno', async () => {
+    const { client, collector } = setup({ client: makeClient({ blocked: 120_000 }) })
+    expect(await collector.tick()).toBe('skipped')
+    expect(client.searches).toHaveLength(0)
+  })
+
+  it('salta senza tassi di cambio (le inserzioni verrebbero tutte scartate)', async () => {
+    const { client, collector } = setup({ toExalted: () => null })
+    expect(await collector.tick()).toBe('skipped')
+    expect(client.searches).toHaveLength(0)
+  })
+
+  it('un errore nei controlli iniziali viene loggato e il tick non rigetta', async () => {
+    const client = makeClient()
+    client.isIdle = () => {
+      throw new Error('rotto')
+    }
+    const { collector, log } = setup({ client })
+    await expect(collector.tick()).resolves.toBe('skipped')
+    expect(log).toHaveBeenCalledTimes(1)
   })
 
   it('con condizioni ok: 1 search, fetch dei primi 20 id in background, salva nella league corrente', async () => {

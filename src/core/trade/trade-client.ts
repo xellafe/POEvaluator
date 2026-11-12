@@ -98,6 +98,11 @@ export class TradeClient {
     return Math.min(this.limiters.search.remainingRatio(), this.limiters.fetch.remainingRatio())
   }
 
+  /** Millisecondi di blocco residui imposti dal sito del trade (il più lungo tra search e fetch). */
+  blockedForMs(): number {
+    return Math.max(this.limiters.search.blockedForMs(), this.limiters.fetch.blockedForMs())
+  }
+
   private enqueue(
     kind: Kind,
     url: string,

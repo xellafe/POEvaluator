@@ -100,8 +100,15 @@ export class RateLimiter {
     return Math.max(0, Math.ceil(wait))
   }
 
+  /** Millisecondi di blocco residui (restrizione del server o Retry-After); 0 se non bloccato. */
+  blockedForMs(): number {
+    return Math.max(0, this.blockedUntil - this.now())
+  }
+
+  /** Frazione del budget ancora libera (minimo tra le regole); 0 durante un blocco. */
   remainingRatio(): number {
     const t = this.now()
+    if (t < this.blockedUntil) return 0
     let ratio = 1
     for (const rule of this.rules) {
       const periodMs = rule.periodSec * 1000
