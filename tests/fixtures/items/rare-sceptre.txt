@@ -1,0 +1,21 @@
+Item Class: Sceptres
+Rarity: Rare
+Entropy Grinder
+Stoic Sceptre
+--------
+Spirit: 100
+--------
+Requires: Level 43, 9 (augmented) Int
+--------
+Item Level: 69
+--------
+Grants Skill: Level 15 Discipline
+--------
+{ Prefix Modifier "Scorching" (Tier: 4) — Damage, Elemental, Fire, Attack }
+Allies in your Presence deal 15(14-16) to 26(21-26) added Attack Fire Damage
+{ Suffix Modifier "of the Talented" (Tier: 3) }
+25% reduced Attribute Requirements
+{ Suffix Modifier "of Expertise" (Tier: 2) — Caster, Speed }
+Allies in your Presence have 14(13-16)% increased Cast Speed
+{ Suffix Modifier "of the Student" (Tier: 7) — Attribute }
++10(9-12) to Intelligence

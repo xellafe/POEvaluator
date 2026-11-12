@@ -1,7 +1,7 @@
 // Adapter tra il parser vendorizzato di Exiled Exchange 2 (ParsedItem) e RareItem di POEvaluator.
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { ItemMod, ModType, ParseResult } from '../types'
+import type { ItemMod, ModType, ParseResult, RareItem, WeaponStats } from '../types'
 import { init } from './vendor/data'
 import { ModifierType } from './vendor/parser/modifiers'
 import type { ParsedModifier } from './vendor/parser/advanced-mod-desc'
@@ -166,22 +166,44 @@ export function parseItemText(text: string): ParseResult {
 
   const maxSlots = MAX_AFFIXES.get(item.category!) ?? DEFAULT_MAX_AFFIXES
 
-  return {
-    ok: true,
-    item: {
-      raw: text,
-      itemClass,
-      baseType: item.info.refName,
-      name: item.name,
-      itemLevel: item.itemLevel ?? 0,
-      quality: item.quality ?? 0,
-      corrupted: item.isCorrupted,
-      explicits: mergeSameStat(explicits),
-      implicits,
-      openPrefixes: Math.max(0, maxSlots - prefixes),
-      openSuffixes: Math.max(0, maxSlots - suffixes)
-    }
+  const rare: RareItem = {
+    raw: text,
+    itemClass,
+    baseType: item.info.refName,
+    name: item.name,
+    itemLevel: item.itemLevel ?? 0,
+    quality: item.quality ?? 0,
+    corrupted: item.isCorrupted,
+    explicits: mergeSameStat(explicits),
+    implicits,
+    openPrefixes: Math.max(0, maxSlots - prefixes),
+    openSuffixes: Math.max(0, maxSlots - suffixes)
   }
+  const weapon = weaponStats(item)
+  if (weapon) rare.weapon = weapon
+  return { ok: true, item: rare }
+}
+
+/** Arrotonda a un decimale (evita il rumore dei float, es. 117.65000000000001). */
+const round1 = (v: number): number => Math.round(v * 10) / 10
+
+/**
+ * DPS di un'arma d'attacco dalle proprietà lette da EE2 ("Physical Damage: a-b",
+ * "Fire/Cold/Lightning Damage: a-b", "Attacks per Second: x"). EE2 dà già le medie
+ * (weaponPHYSICAL, weaponELEMENTAL = somma delle medie elementali). Senza aps: undefined.
+ */
+function weaponStats(item: ParserState): WeaponStats | undefined {
+  const aps = item.weaponAS
+  if (aps === undefined || !Number.isFinite(aps) || aps <= 0) return undefined
+  const out: WeaponStats = {
+    pdps: round1((item.weaponPHYSICAL ?? 0) * aps),
+    edps: round1((item.weaponELEMENTAL ?? 0) * aps),
+    aps
+  }
+  if (item.weaponCRIT !== undefined && Number.isFinite(item.weaponCRIT)) {
+    out.critChance = item.weaponCRIT
+  }
+  return out
 }
 
 /** Header di un mod nel testo avanzato, es. `{ Prefix Modifier "Stalwart" (Tier: 6) — Life }`. */

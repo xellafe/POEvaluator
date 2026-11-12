@@ -194,3 +194,23 @@ describe('statAlternatives', () => {
     expect(statAlternatives('explicit.stat_nope')).toEqual(['explicit.stat_nope'])
   })
 })
+
+describe('parseItemText: dati delle armi', () => {
+  it('quarterstaff: pdps, edps, aps e critico dalle proprietà del testo', () => {
+    const item = parseRare('rare-quarterstaff.txt')
+    expect(item.itemClass).toBe('weapon.warstaff')
+    // fisico (59+122)/2 × 1.30 = 117.65; freddo (54+82)/2 × 1.30 = 88.4
+    expect(item.weapon).toEqual({ pdps: 117.7, edps: 88.4, aps: 1.3, critChance: 10 })
+    expect(item.openPrefixes).toBe(0)
+    expect(item.openSuffixes).toBe(1)
+  })
+
+  it('scettro e bastone (senza attacchi al secondo): nessun dato arma', () => {
+    expect(parseRare('rare-sceptre.txt').weapon).toBeUndefined()
+    expect(parseRare('rare-staff.txt').weapon).toBeUndefined()
+  })
+
+  it('oggetti non armi: nessun dato arma', () => {
+    expect(parseRare('rare-boots.txt').weapon).toBeUndefined()
+  })
+})

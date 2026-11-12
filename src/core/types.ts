@@ -37,6 +37,19 @@ export interface RareItem {
   /** max prefix della categoria (3, gioielli 2) - prefix presenti, contati per modificatore */
   openPrefixes: number
   openSuffixes: number
+  /**
+   * Armi d'attacco: DPS dalle proprietà del testo (valori mostrati in gioco, già con mod locali e
+   * qualità). pdps = media del danno fisico × aps; edps = somma delle medie elementali × aps.
+   * Assente se l'oggetto non ha "Attacks per Second".
+   */
+  weapon?: WeaponStats
+}
+
+export interface WeaponStats {
+  pdps: number
+  edps: number
+  aps: number
+  critChance?: number
 }
 
 export type ParseResult =

@@ -1,0 +1,29 @@
+Item Class: Quarterstaves
+Rarity: Rare
+Blood Beam
+Hefty Quarterstaff
+--------
+Physical Damage: 59-122 (augmented)
+Cold Damage: 54-82 (cold)
+Critical Hit Chance: 10.00%
+Attacks per Second: 1.30
+--------
+Requires: Level 48, 63 Dex, 26 Int
+--------
+Item Level: 70
+--------
+{ Implicit Modifier }
+33(20-50)% chance to Daze on Hit
+--------
+{ Prefix Modifier "Hunter's" (Tier: 3) — Attack }
++273(237-346) to Accuracy Rating
+{ Prefix Modifier "Glaciated" (Tier: 4) — Damage, Elemental, Cold, Attack }
+Adds 54(46-57) to 82(70-88) Cold Damage
+{ Prefix Modifier "Champion's" (Tier: 4) — Damage, Physical, Attack }
+51(45-54)% increased Physical Damage
++105(98-123) to Accuracy Rating
+{ Suffix Modifier "of the Boxer" (Tier: 4) }
+Causes 50(41-50)% increased Stun Buildup
+{ Suffix Modifier "of Absorption" (Tier: 8) — Mana }
+Gain 3(2-3) Mana per enemy killed
+--------

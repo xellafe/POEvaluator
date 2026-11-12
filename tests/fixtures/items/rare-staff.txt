@@ -1,0 +1,19 @@
+Item Class: Staves
+Rarity: Rare
+Loath Spell
+Roaring Staff
+--------
+Requires: Level 49, 87 (unmet) Int
+--------
+Item Level: 69
+--------
+Grants Skill: Level 15 Unleash
+--------
+{ Prefix Modifier "Gentian" (Tier: 4) — Mana }
++185(179-208) to maximum Mana
+{ Suffix Modifier "of Ice" (Tier: 3) — Elemental, Cold, Caster, Gem }
++3(3-4) to Level of all Cold Spell Skills
+{ Suffix Modifier "of Expertise" (Tier: 5) — Caster, Speed }
+28(26-31)% increased Cast Speed
+{ Suffix Modifier "of the Philosopher" (Tier: 4) — Attribute }
++24(21-24) to Intelligence
