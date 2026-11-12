@@ -56,7 +56,7 @@ export class Overlay {
     this.window = new BrowserWindow({
       ...OVERLAY_WINDOW_OPTS,
       focusable: false,
-      webPreferences: { preload: preloadPath(), sandbox: false }
+      webPreferences: { preload: preloadPath(), sandbox: true }
     })
     setupView(this.window, 'overlay', log)
     this.passThrough()
@@ -121,7 +121,7 @@ export function openSettingsWindow(icon: string, log: Log): void {
     title: 'POEvaluator · Impostazioni',
     backgroundColor: '#15110d',
     icon,
-    webPreferences: { preload: preloadPath(), sandbox: false }
+    webPreferences: { preload: preloadPath(), sandbox: true }
   })
   settingsWindow = win
   win.once('ready-to-show', () => win.show())

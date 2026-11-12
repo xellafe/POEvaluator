@@ -1,5 +1,4 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 import {
   IPC,
   type AnalyzingPayload,
@@ -30,16 +29,5 @@ const poe: PoeApi = {
   setSettings: (patch) => ipcRenderer.invoke(IPC.setSettings, patch)
 }
 
-if (process.contextIsolated) {
-  try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
-    contextBridge.exposeInMainWorld('poe', poe)
-  } catch (error) {
-    console.error(error)
-  }
-} else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
-  // @ts-ignore (define in dts)
-  window.poe = poe
-}
+// Preload sandboxed: espone solo `window.poe` (nessun ipcRenderer generico né `process`).
+contextBridge.exposeInMainWorld('poe', poe)
