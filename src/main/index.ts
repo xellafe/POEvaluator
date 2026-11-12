@@ -23,6 +23,7 @@ import { copyHoveredItem } from './capture'
 import { EvaluatorService, type EvalResult } from './evaluator-service'
 import { KeyRepeatFilter, matchesHotkey, parseHotkey, type Hotkey } from './input'
 import { LeagueCache } from './league-cache'
+import { loadRateLimiters, RateLimitFile } from './rate-limit-file'
 import { createTray, openSettingsWindow, Overlay, sendToSettings } from './overlay'
 import { DEEP_BUSY_MESSAGE, RequestGate } from './request-gate'
 import { applyPatch, loadSettings, saveSettings, settingsError } from './settings-file'
@@ -43,6 +44,8 @@ let service: EvaluatorService | null = null
 let collector: BackgroundCollector | null = null
 /** League salvate in userData/leagues.json, aggiornate dal trade ogni 24 ore. */
 let leagueCache: LeagueCache | null = null
+/** Stato dei rate limiter in userData/rate-limits.json (debounce dopo ogni risposta, e alla chiusura). */
+let rateLimitFile: RateLimitFile | null = null
 let statsTimer: ReturnType<typeof setInterval> | null = null
 let hotkeys: { quick: Hotkey | null; deep: Hotkey | null } = { quick: null, deep: null }
 let lastItemText = ''
@@ -239,12 +242,24 @@ async function startServices(): Promise<void> {
   log(`database aperto: ${dbPath}`)
 
   const userAgent = `POEvaluator/${app.getVersion()} (+https://github.com/xellafe/POEvaluator)`
+  // finestre, regole e restrizioni della sessione precedente: le prime richieste non sforano (H1)
+  const rateLimitsPath = join(userData, 'rate-limits.json')
   const client = new TradeClient({
     userAgent,
+    limiters: loadRateLimiters(rateLimitsPath, () => Date.now(), log),
+    onResponse: () => rateLimitFile?.schedule(),
     onRateLimited: (kind, attempt, headers) =>
       log(`429 dal trade (${kind}, tentativo ${attempt}) ${headers}`),
     onRestriction: (kind, headers) => log(`restrizione attiva sul trade (${kind}) ${headers}`)
   })
+  rateLimitFile = new RateLimitFile({
+    path: rateLimitsPath,
+    snapshot: () => client.snapshot(),
+    log
+  })
+  const blocked = client.blockedForMs()
+  if (blocked > 0)
+    log(`trade in pausa dalla sessione precedente: ancora ${Math.ceil(blocked / 1000)} s`)
   leagueCache = new LeagueCache({
     path: join(userData, 'leagues.json'),
     fetchLeagues: (priority) => client.leagues(priority),
@@ -295,6 +310,7 @@ function shutdown(): void {
   collector?.stop()
   if (statsTimer) clearInterval(statsTimer)
   service?.stop()
+  rateLimitFile?.flush()
   store?.close()
   store = null
   tray?.destroy()
