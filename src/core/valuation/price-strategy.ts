@@ -91,3 +91,50 @@ export function priceFor(prices: number[], t: Settings['thresholds']): Result {
   }
   return result
 }
+
+/** Prezzi puliti minimi per dare un verdetto nell'analisi approfondita. */
+export const MIN_PARITY_PRICES = 3
+/** Prezzi puliti per la confidenza alta / media dell'analisi approfondita. */
+const PARITY_HIGH_COUNT = 15
+const PARITY_MEDIUM_COUNT = 6
+
+/**
+ * Prezzo dell'analisi approfondita sul confronto "alla pari" (R31): prezzo consigliato al 25°
+ * percentile dei prezzi puliti, min al 10°, max al 75°; il verdetto viene dal prezzo consigliato
+ * (non dalla mediana, così un campione con coda alta non gonfia il verdetto).
+ * Con meno di 3 prezzi puliti nessun verdetto (il messaggio lo aggiunge il chiamante).
+ * Confidenza: alta con >= 15 prezzi e `fullMatch` (nessun mod tolto e gruppo not presente),
+ * media con >= 6, altrimenti bassa. Pessimo resta senza prezzo (decisione utente del Task 13).
+ */
+export function parityPriceFor(
+  prices: number[],
+  t: Settings['thresholds'],
+  opts: { fullMatch: boolean }
+): Result {
+  const clean = cleanPrices(prices)
+  if (clean.length < MIN_PARITY_PRICES) {
+    return { verdict: null, confidence: 'bassa', comparablesCount: clean.length, warnings: [] }
+  }
+  const suggested = roundPrice(percentile(clean, 0.25))
+  const verdict = verdictFor(suggested, t)
+  const confidence: Confidence =
+    clean.length >= PARITY_HIGH_COUNT && opts.fullMatch
+      ? 'alta'
+      : clean.length >= PARITY_MEDIUM_COUNT
+        ? 'media'
+        : 'bassa'
+  const result: Result = {
+    verdict,
+    confidence,
+    comparablesCount: clean.length,
+    warnings: verdict === 'eccellente' && confidence !== 'alta' ? [EXCEPTIONAL_WARNING] : []
+  }
+  if (verdict !== 'pessimo') {
+    result.price = {
+      suggested,
+      min: roundPrice(percentile(clean, 0.1)),
+      max: roundPrice(percentile(clean, 0.75))
+    }
+  }
+  return result
+}

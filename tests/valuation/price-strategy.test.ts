@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS } from '../../src/core/settings'
 import {
   cleanPrices,
   confidenceFor,
+  parityPriceFor,
   percentile,
   priceFor,
   roundPrice,
@@ -170,5 +171,67 @@ describe('priceFor', () => {
       'Troppo pochi oggetti simili sul mercato',
       'Pochi oggetti simili in vendita: controlla il prezzo sul trade prima di venderlo'
     ])
+  })
+})
+
+describe('parityPriceFor (analisi approfondita, confronto alla pari)', () => {
+  const steps = (n: number, from: number, step: number): number[] =>
+    Array.from({ length: n }, (_, i) => from + i * step)
+
+  it('prezzo consigliato al 25° percentile, min al 10°, max al 75°', () => {
+    // 10..200: p25 = 57.5, p10 = 29, p75 = 152.5
+    const r = parityPriceFor(steps(20, 10, 10), T, { fullMatch: true })
+    expect(r.price).toEqual({ suggested: 58, min: 29, max: 153 })
+    expect(r.verdict).toBe('ottimo')
+    expect(r.comparablesCount).toBe(20)
+  })
+
+  it('verdetto dal prezzo consigliato, non dalla mediana (niente circolarità)', () => {
+    // mediana 310 (sarebbe Eccellente), p25 = 32.5 -> Buono
+    const r = parityPriceFor([20, 25, 30, 40, 300, 320, 340, 360, 380, 400], T, {
+      fullMatch: true
+    })
+    expect(r.verdict).toBe('buono')
+    expect(r.price?.suggested).toBe(33)
+  })
+
+  it('Pessimo: nessun prezzo (decisione utente del Task 13)', () => {
+    const r = parityPriceFor([1, 2, 2, 3, 4, 5], T, { fullMatch: true })
+    expect(r.verdict).toBe('pessimo')
+    expect(r.price).toBeUndefined()
+  })
+
+  it('meno di 3 prezzi puliti: nessun verdetto', () => {
+    for (const prices of [[], [100], [100, 120]]) {
+      const r = parityPriceFor(prices, T, { fullMatch: true })
+      expect(r.verdict).toBeNull()
+      expect(r.price).toBeUndefined()
+      expect(r.confidence).toBe('bassa')
+      expect(r.comparablesCount).toBe(prices.length)
+    }
+  })
+
+  it('confidenza: alta con >= 15 prezzi e confronto pieno; media con >= 6; bassa altrimenti', () => {
+    const p15 = steps(15, 10, 1)
+    expect(parityPriceFor(p15, T, { fullMatch: true }).confidence).toBe('alta')
+    expect(parityPriceFor(p15, T, { fullMatch: false }).confidence).toBe('media')
+    expect(parityPriceFor(steps(14, 10, 1), T, { fullMatch: true }).confidence).toBe('media')
+    expect(parityPriceFor(steps(6, 10, 1), T, { fullMatch: true }).confidence).toBe('media')
+    expect(parityPriceFor(steps(5, 10, 1), T, { fullMatch: true }).confidence).toBe('bassa')
+  })
+
+  it('Eccellente: avviso solo con confidenza non alta', () => {
+    const warn = 'Pochi oggetti simili in vendita: controlla il prezzo sul trade prima di venderlo'
+    const high = parityPriceFor(steps(15, 400, 10), T, { fullMatch: true })
+    expect(high.verdict).toBe('eccellente')
+    expect(high.warnings).toEqual([])
+    const low = parityPriceFor(steps(5, 400, 10), T, { fullMatch: true })
+    expect(low.verdict).toBe('eccellente')
+    expect(low.warnings).toEqual([warn])
+  })
+
+  it('scarta gli outlier prima dei percentili', () => {
+    const r = parityPriceFor([10, 12, 14, 15, 16, 18, 20, 22, 25, 1000], T, { fullMatch: true })
+    expect(r.comparablesCount).toBe(9)
   })
 })

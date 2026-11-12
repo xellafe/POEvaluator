@@ -2,12 +2,18 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { ListingStore } from '../../src/core/db/listing-store'
-import { initParserData } from '../../src/core/parser/parse-item'
+import { initParserData, parseItemText } from '../../src/core/parser/parse-item'
 import { DEFAULT_SETTINGS } from '../../src/core/settings'
 import { isAbortError, type TradeClient } from '../../src/core/trade/trade-client'
 import { EMPTY_PREFIX_STAT_ID, EMPTY_SUFFIX_STAT_ID } from '../../src/core/trade/query-builder'
 import type { ItemMod, RareItem } from '../../src/core/types'
-import { deepAnalysis, type DeepDeps } from '../../src/core/valuation/deep-analysis'
+import {
+  deepAnalysis,
+  LOCAL_DAMAGE_STATS,
+  parityPlan,
+  parityQuery,
+  type DeepDeps
+} from '../../src/core/valuation/deep-analysis'
 
 const fixture = JSON.parse(
   readFileSync(new URL('../fixtures/trade/fetch-response.json', import.meta.url), 'utf8')
@@ -18,12 +24,15 @@ beforeAll(async () => {
 })
 
 const NOW = new Date('2026-11-12T12:00:00.000Z')
-// pesi armour.boots: MOVE 1, LIFE 0.8, FIRE_RES 0.5, LIGHTNING_RES 0.5, DEX 0.2
+// pesi armour.boots: MOVE 1, LIFE 0.8, FIRE_RES 0.5, COLD_RES 0.5, LIGHTNING_RES 0.5,
+// CHAOS_RES 0.4, DEX 0.2
 const MOVE = 'explicit.stat_2250533757'
 const LIFE = 'explicit.stat_3299347043'
 const FIRE_RES = 'explicit.stat_3372524247'
+const COLD_RES = 'explicit.stat_4220027924'
 const DEX = 'explicit.stat_3261801346'
 const LIGHTNING_RES = 'explicit.stat_1671376347'
+const CHAOS_RES = 'explicit.stat_2923486259'
 
 function mod(
   statId: string,
@@ -53,27 +62,45 @@ function boots(explicits: ItemMod[], over: Partial<RareItem> = {}): RareItem {
   }
 }
 
-type Query = { query: { stats: { type: string; filters: { id: string }[] }[] } }
+type Filter = { id: string; value?: { min?: number; max?: number } }
+type Query = {
+  query: {
+    stats: { type: string; filters: Filter[] }[]
+    filters: Record<string, { filters: Record<string, unknown> }>
+  }
+}
 
-/** Stat dei mod nella query (un gruppo count = un mod; esclusi i pseudo degli slot vuoti). */
+/** Stat dei mod nella query (un gruppo count = un mod; esclusi i pseudo e il gruppo not). */
 function modIdsOf(query: object): string[] {
   const stats = (query as Query).query.stats
   const ids: string[] = []
   for (const g of stats) {
     if (g.type === 'and') {
       for (const f of g.filters) if (!f.id.startsWith('pseudo.')) ids.push(f.id)
-    } else {
+    } else if (g.type === 'count') {
       ids.push(g.filters[0].id)
     }
   }
   return ids
 }
 
-function pseudoIdsOf(query: object): string[] {
-  return (query as Query).query.stats[0].filters
-    .map((f) => f.id)
-    .filter((id) => id.startsWith('pseudo.'))
+/** Filtri dei mod (gruppo and, senza pseudo) con i loro valori. */
+function modFiltersOf(query: object): Filter[] {
+  return (query as Query).query.stats[0].filters.filter((f) => !f.id.startsWith('pseudo.'))
 }
+
+/** Filtri pseudo degli slot vuoti, con il loro valore. */
+function pseudoOf(query: object): Filter[] {
+  return (query as Query).query.stats[0].filters.filter((f) => f.id.startsWith('pseudo.'))
+}
+
+/** Id del gruppo not (vuoto se assente). */
+function notIdsOf(query: object): string[] {
+  return (query as Query).query.stats.find((g) => g.type === 'not')?.filters.map((f) => f.id) ?? []
+}
+
+/** Ricerca degli oggetti con uno slot libero in più (filtro pseudo con min). */
+const openSlotSearch = (q: object): boolean => pseudoOf(q).some((f) => f.value?.min !== undefined)
 
 interface Response {
   total: number
@@ -141,30 +168,152 @@ const fourMods = (): ItemMod[] => [
   mod(MOVE, 25, 'prefix')
 ]
 
+// Stat di valore degli stivali che fourMods() non ha (peso >= 0.4, per peso decrescente).
+const BOOTS_NOT = [COLD_RES, LIGHTNING_RES, CHAOS_RES]
+
+const fixtureItem = (name: string): RareItem => {
+  const r = parseItemText(readFileSync(join(__dirname, '../fixtures/items', name), 'utf8'))
+  if (!r.ok) throw new Error(`${name}: ${r.reason}`)
+  return r.item
+}
+
+describe('deepAnalysis: query base alla pari', () => {
+  it('quarterstaff: pdps/edps al posto dei mod di danno locali, not, slot pieni, indexed e collapse', () => {
+    const item = fixtureItem('rare-quarterstaff.txt')
+    const q = parityQuery(item, parityPlan(item), DEFAULT_SETTINGS) as Query
+    // pdps 117.7 × 0.85 = 100.04, edps 88.4 × 0.85 = 75.14
+    expect(q.query.filters.equipment_filters).toEqual({
+      filters: { pdps: { min: 100 }, edps: { min: 75 } }
+    })
+    const allIds = JSON.stringify(q.query.stats)
+    for (const id of LOCAL_DAMAGE_STATS) expect(allIds).not.toContain(`"${id}"`)
+    // Accuracy, Stun Buildup e Mana per kill non hanno peso: assenti
+    expect(modIdsOf(q)).toEqual([])
+    expect(allIds).not.toContain('stat_691932474')
+    expect(allIds).not.toContain('stat_791928121')
+    // stat di valore assenti: livelli melee (0.9), critico locale (0.6), danno critico (0.4)
+    expect(notIdsOf(q)).toEqual([
+      'explicit.stat_9187492',
+      'explicit.stat_518292764',
+      'explicit.stat_3556824919'
+    ])
+    // 3 prefix (pieni), 2 suffix (uno libero)
+    expect(pseudoOf(q)).toEqual([{ id: EMPTY_PREFIX_STAT_ID, value: { max: 0 } }])
+    expect(q.query.filters.trade_filters).toEqual({
+      filters: {
+        indexed: { option: '1week' },
+        collapse: { option: 'true' },
+        sale_type: { option: 'priced_with_info' }
+      }
+    })
+    expect(q.query.filters.type_filters).toEqual({
+      filters: { category: { option: 'weapon.warstaff' }, rarity: { option: 'rare' } }
+    })
+    expect((q as unknown as { sort: object }).sort).toEqual({ price: 'asc' })
+  })
+
+  it('bastone e scettro (incantatori): nessun filtro DPS', () => {
+    for (const name of ['rare-staff.txt', 'rare-sceptre.txt']) {
+      const item = fixtureItem(name)
+      const q = parityQuery(item, parityPlan(item), DEFAULT_SETTINGS) as Query
+      expect(q.query.filters.equipment_filters).toBeUndefined()
+    }
+  })
+
+  it('bastone: mod con peso nei filtri (×0.8), stat di valore assenti nel not, suffix pieni', () => {
+    const item = fixtureItem('rare-staff.txt')
+    const q = parityQuery(item, parityPlan(item), DEFAULT_SETTINGS) as Query
+    // cast speed 0.7, mana 0.3, int 0.2; "+3 Cold Spell Skills" non ha peso
+    expect(modFiltersOf(q)).toEqual([
+      { id: 'explicit.stat_2891184298', value: { min: 22 } },
+      { id: 'explicit.stat_1050105434', value: { min: 148 } },
+      { id: 'explicit.stat_328541901', value: { min: 19 } }
+    ])
+    expect(notIdsOf(q)).toEqual([
+      'explicit.stat_124131830',
+      'explicit.stat_2974417149',
+      'explicit.stat_737908626',
+      'explicit.stat_274716455'
+    ])
+    expect(pseudoOf(q)).toEqual([{ id: EMPTY_SUFFIX_STAT_ID, value: { max: 0 } }])
+  })
+
+  it('indexed dalla età massima delle impostazioni', () => {
+    const item = boots(fourMods())
+    const settings = { ...DEFAULT_SETTINGS, maxListingAgeDays: 2 }
+    const q = parityQuery(item, parityPlan(item), settings) as Query
+    expect(q.query.filters.trade_filters.filters.indexed).toEqual({ option: '3days' })
+  })
+
+  it('il gruppo not ha al massimo 10 stat, per peso decrescente', () => {
+    // anello: l'oggetto non ha nessuna delle stat di valore della tabella
+    const item = boots([mod(DEX, 10, 'suffix')], { itemClass: 'accessory.ring' })
+    const plan = parityPlan(item)
+    expect(plan.exclude.length).toBeGreaterThan(0)
+    expect(plan.exclude.length).toBeLessThanOrEqual(10)
+    expect(plan.exclude[0]).toBe('explicit.stat_2901986750')
+  })
+
+  it('classe senza pesi: tutti i mod nella query, nessun gruppo not', () => {
+    const item = boots([mod(MOVE, 25), mod(LIFE, 80)], { itemClass: 'flask.charm' })
+    const q = parityQuery(item, parityPlan(item), DEFAULT_SETTINGS)
+    expect(modIdsOf(q).sort()).toEqual([LIFE, MOVE].sort())
+    expect(notIdsOf(q)).toEqual([])
+  })
+})
+
 describe('deepAnalysis', () => {
-  it('rilassa togliendo il mod di peso minore finché total >= 5', async () => {
+  it('rilassa prima i valori a ×0.6, poi toglie il mod di peso minore', async () => {
     const { client, searches } = fakeClient((q) =>
       modIdsOf(q).length >= 4
         ? { total: 2, prices: [10, 20] }
         : { total: 12, prices: range(12, () => 50) }
     )
-    const v = await deepAnalysis(boots(fourMods()), deps(client, { maxSearches: 2 }))
-    expect(searches.length).toBe(2)
+    const v = await deepAnalysis(boots(fourMods()), deps(client, { maxSearches: 3 }))
+    expect(searches.length).toBe(3)
     expect(modIdsOf(searches[0]).sort()).toEqual([DEX, FIRE_RES, LIFE, MOVE].sort())
-    expect(modIdsOf(searches[1]).sort()).toEqual([FIRE_RES, LIFE, MOVE].sort())
-    expect(v.tradeUrl).toMatch(/\/q2$/)
+    expect(modFiltersOf(searches[0]).find((f) => f.id === LIFE)?.value).toEqual({ min: 64 })
+    expect(modIdsOf(searches[1]).sort()).toEqual([DEX, FIRE_RES, LIFE, MOVE].sort())
+    expect(modFiltersOf(searches[1]).find((f) => f.id === LIFE)?.value).toEqual({ min: 48 })
+    expect(modIdsOf(searches[2]).sort()).toEqual([FIRE_RES, LIFE, MOVE].sort())
+    expect(v.tradeUrl).toMatch(/\/q3$/)
+  })
+
+  it('il rilassamento non tocca mai il gruppo not né i vincoli sugli slot', async () => {
+    const { client, searches } = fakeClient(() => ({ total: 1, prices: [10] }))
+    await deepAnalysis(boots(fourMods(), { openPrefixes: 0, openSuffixes: 0 }), deps(client))
+    expect(searches.length).toBe(5)
+    for (const q of searches) {
+      expect(notIdsOf(q)).toEqual(BOOTS_NOT)
+      expect(pseudoOf(q)).toEqual([
+        { id: EMPTY_PREFIX_STAT_ID, value: { max: 0 } },
+        { id: EMPTY_SUFFIX_STAT_ID, value: { max: 0 } }
+      ])
+    }
   })
 
   it('non rilassa oltre un mod', async () => {
     const { client, searches } = fakeClient(() => ({ total: 1, prices: [10] }))
     await deepAnalysis(boots(fourMods()), deps(client))
-    expect(searches.slice(0, 4).map((q) => modIdsOf(q))).toEqual([
+    expect(searches.map((q) => modIdsOf(q))).toEqual([
+      [MOVE, LIFE, FIRE_RES, DEX],
       [MOVE, LIFE, FIRE_RES, DEX],
       [MOVE, LIFE, FIRE_RES],
       [MOVE, LIFE],
       [MOVE]
     ])
-    expect(searches.length).toBe(4)
+  })
+
+  it('arma: il rilassamento porta anche il DPS a ×0.6', async () => {
+    const item = fixtureItem('rare-quarterstaff.txt')
+    const { client, searches } = fakeClient(() => ({ total: 1, prices: [10] }))
+    await deepAnalysis(item, deps(client))
+    // nessun mod con peso: base e valori a ×0.6, poi niente da togliere
+    expect(searches.length).toBe(2)
+    expect((searches[1] as Query).query.filters.equipment_filters).toEqual({
+      filters: { pdps: { min: 70 }, edps: { min: 53 } }
+    })
+    expect(notIdsOf(searches[1])).toEqual(notIdsOf(searches[0]))
   })
 
   it('a parità di peso ordina per tier migliore, senza tier in fondo', async () => {
@@ -177,6 +326,13 @@ describe('deepAnalysis', () => {
     ])
     await deepAnalysis(item, deps(client, { maxSearches: 1 }))
     expect(modIdsOf(searches[0])).toEqual([MOVE, LIGHTNING_RES, FIRE_RES])
+  })
+
+  it('i mod senza peso non entrano nella query', async () => {
+    const { client, searches } = fakeClient(() => ({ total: 0, prices: [] }))
+    const accuracy = mod('explicit.stat_691932474', 300, 'prefix')
+    await deepAnalysis(boots([mod(MOVE, 25), accuracy]), deps(client, { maxSearches: 1 }))
+    expect(modIdsOf(searches[0])).toEqual([MOVE])
   })
 
   it('non supera mai maxSearches chiamate a search', async () => {
@@ -227,9 +383,9 @@ describe('deepAnalysis', () => {
     expect(saved.find((l) => l.id === 'q1-5')!.priceExalted).toBe(15)
   })
 
-  it('contributo positivo per il mod la cui rimozione abbassa la mediana', async () => {
+  it('contributo = p25(base) - p25(senza il mod e con la sua stat nel not)', async () => {
     const mods = [mod(MOVE, 25, 'prefix'), mod(LIFE, 80, 'prefix'), mod(FIRE_RES, 30, 'suffix')]
-    const { client } = fakeClient((q) => {
+    const { client, searches } = fakeClient((q) => {
       const ids = modIdsOf(q)
       if (ids.length === 3) return { total: 12, prices: range(12, () => 100) }
       if (!ids.includes(MOVE)) return { total: 12, prices: range(12, () => 40) }
@@ -242,70 +398,94 @@ describe('deepAnalysis', () => {
       { statId: LIFE, text: `text ${LIFE}`, deltaExalted: 0 },
       { statId: FIRE_RES, text: `text ${FIRE_RES}`, deltaExalted: -20 }
     ])
+    // ricerche dei contributi: la stat tolta va nel gruppo not, accanto a quelle della base
+    expect(notIdsOf(searches[1])).toEqual([...notIdsOf(searches[0]), MOVE])
+    expect(notIdsOf(searches[2])).toEqual([...notIdsOf(searches[0]), LIFE])
+    expect(notIdsOf(searches[3])).toEqual([...notIdsOf(searches[0]), FIRE_RES])
     expect(v.verdict).toBe('ottimo')
     expect(v.comparablesCount).toBe(12)
     expect(v.tradeUrl).toBe('https://www.pathofexile.com/trade2/search/poe2/Standard/q1')
   })
 
-  it('omette i contributi le cui ricerche non danno prezzi', async () => {
+  it('contributo nascosto se una delle due popolazioni ha meno di 3 prezzi', async () => {
     const mods = [mod(MOVE, 25, 'prefix'), mod(LIFE, 80, 'prefix')]
     const { client } = fakeClient((q) => {
       const ids = modIdsOf(q)
       if (ids.length === 2) return { total: 12, prices: range(12, () => 100) }
-      if (!ids.includes(MOVE)) return { total: 0, prices: [] }
+      if (!ids.includes(MOVE)) return { total: 2, prices: [10, 20] }
       return { total: 12, prices: range(12, () => 70) }
     })
     const v = await deepAnalysis(boots(mods), deps(client))
     expect(v.contributions).toEqual([{ statId: LIFE, text: `text ${LIFE}`, deltaExalted: 30 }])
   })
 
-  it('con meno di 2 prezzi base salta contributi e slot, confidenza bassa', async () => {
-    const { client, searches } = fakeClient(() => ({ total: 1, prices: [100] }))
+  it('meno di 3 prezzi dopo il rilassamento: nessun verdetto, niente contributi né slot', async () => {
+    const { client, searches } = fakeClient(() => ({ total: 2, prices: [100, 120] }))
     const v = await deepAnalysis(
       boots([mod(MOVE, 25)], { openPrefixes: 0, openSuffixes: 0 }),
       deps(client)
     )
-    expect(searches.length).toBe(1)
+    // base + valori a ×0.6; con un solo mod non si toglie altro
+    expect(searches.length).toBe(2)
+    expect(v.verdict).toBeNull()
+    expect(v.price).toBeUndefined()
     expect(v.confidence).toBe('bassa')
     expect(v.contributions).toBeUndefined()
-    expect(v.warnings).toContain('Troppo pochi oggetti simili sul mercato')
+    expect(v.warnings).toEqual(['Troppo pochi oggetti simili in vendita per una stima'])
   })
 
-  it('slot occupati: cerca con slot liberi sul lato del mod più debole e avvisa se valgono di più', async () => {
+  it('prezzo al 25° percentile e verdetto dal prezzo, non dalla mediana', async () => {
+    const prices = [20, 25, 30, 40, 300, 320, 340, 360, 380, 400]
+    const { client } = fakeClient(() => ({ total: 10, prices }))
+    const v = await deepAnalysis(boots([mod(MOVE, 25)]), deps(client))
+    // mediana 310 (Eccellente col modello precedente), p25 = 32.5
+    expect(v.verdict).toBe('buono')
+    expect(v.price?.suggested).toBe(33)
+    expect(v.warnings.some((w) => w.startsWith('Pochi oggetti simili'))).toBe(false)
+  })
+
+  it('slot occupati: cerca alla pari con uno slot libero sul lato del mod più debole e avvisa se valgono di più', async () => {
     const mods = [mod(MOVE, 25, 'prefix'), mod(FIRE_RES, 30, 'suffix'), mod(LIFE, 80, 'prefix')]
     const { client, searches } = fakeClient((q) => {
-      if (pseudoIdsOf(q).length > 0) return { total: 12, prices: range(12, () => 150) }
+      if (openSlotSearch(q)) return { total: 12, prices: range(12, () => 150) }
       return { total: 12, prices: range(12, () => 100) }
     })
     const v = await deepAnalysis(boots(mods, { openPrefixes: 0, openSuffixes: 0 }), deps(client))
     const last = searches[searches.length - 1]
     // mod più debole: FIRE_RES (0.5), suffix
-    expect(pseudoIdsOf(last)).toEqual([EMPTY_SUFFIX_STAT_ID])
+    expect(pseudoOf(last)).toEqual([
+      { id: EMPTY_SUFFIX_STAT_ID, value: { min: 1 } },
+      { id: EMPTY_PREFIX_STAT_ID, value: { max: 0 } }
+    ])
     expect(modIdsOf(last).length).toBe(3)
+    expect(notIdsOf(last)).toEqual(notIdsOf(searches[0]))
     expect(v.warnings).toContain(
       'Gli oggetti simili con uno slot libero si vendono intorno a 150 ex'
     )
-    // la stima resta quella dei comparabili base
+    // la stima resta quella degli oggetti simili base
     expect(v.price?.suggested).toBe(100)
   })
 
-  it('slot occupati: mod più debole prefix -> minOpenPrefixes; mediana più bassa ignorata', async () => {
+  it('slot occupati: mod più debole prefix -> slot prefix libero; prezzo più basso ignorato', async () => {
     const mods = [mod(MOVE, 25, 'suffix'), mod(LIFE, 80, 'prefix')]
     const { client, searches } = fakeClient((q) => {
-      if (pseudoIdsOf(q).length > 0) return { total: 12, prices: range(12, () => 50) }
+      if (openSlotSearch(q)) return { total: 12, prices: range(12, () => 50) }
       return { total: 12, prices: range(12, () => 100) }
     })
     const v = await deepAnalysis(boots(mods, { openPrefixes: 0, openSuffixes: 0 }), deps(client))
-    expect(pseudoIdsOf(searches[searches.length - 1])).toEqual([EMPTY_PREFIX_STAT_ID])
+    expect(pseudoOf(searches[searches.length - 1])).toContainEqual({
+      id: EMPTY_PREFIX_STAT_ID,
+      value: { min: 1 }
+    })
     expect(v.warnings.some((w) => w.startsWith('Gli oggetti simili con uno slot libero'))).toBe(
       false
     )
   })
 
-  it("niente ricerca slot liberi se l'oggetto ha slot liberi", async () => {
+  it('niente ricerca slot liberi se il lato del mod più debole ha slot liberi', async () => {
     const { client, searches } = fakeClient(() => ({ total: 12, prices: range(12, () => 100) }))
     await deepAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))
-    expect(searches.every((q) => pseudoIdsOf(q).length === 0)).toBe(true)
+    expect(searches.every((q) => !openSlotSearch(q))).toBe(true)
     expect(searches.length).toBe(3)
   })
 
@@ -317,15 +497,15 @@ describe('deepAnalysis', () => {
       { statId: MOVE, text: `text ${MOVE}`, deltaExalted: 0 },
       { statId: LIFE, text: `text ${LIFE}`, deltaExalted: 0 }
     ])
-    // priceFor resta su tutti i 20 prezzi base (mediana 57.5 -> ottimo, p60 = 67)
+    // il prezzo resta su tutti i 20 prezzi base (p25 = 33.75)
     expect(v.comparablesCount).toBe(20)
-    expect(v.price?.suggested).toBe(67)
+    expect(v.price?.suggested).toBe(34)
   })
 
   it('slot liberi: confronto sui 10 prezzi base più economici', async () => {
-    // base 10..200 (10 più economici: mediana 55; tutti e 20: 105); slot liberi 70..88 (mediana 79)
+    // base 10..200 (10 più economici: p25 32.5); slot liberi 70..108 (10 più economici: p25 74.5)
     const { client } = fakeClient((q) =>
-      pseudoIdsOf(q).length > 0
+      openSlotSearch(q)
         ? { total: 20, prices: range(20, (i) => 70 + i * 2) }
         : { total: 20, prices: range(20, (i) => 10 + i * 10) }
     )
@@ -337,19 +517,21 @@ describe('deepAnalysis', () => {
       deps(client)
     )
     expect(v.warnings).toContain(
-      'Gli oggetti simili con uno slot libero si vendono intorno a 79 ex'
+      'Gli oggetti simili con uno slot libero si vendono intorno a 75 ex'
     )
   })
 
-  it('query finale con un solo mod: nessuna ricerca di contributo', async () => {
-    const { client, searches } = fakeClient((q) =>
-      modIdsOf(q).length >= 2
-        ? { total: 2, prices: [10, 20] }
-        : { total: 12, prices: range(12, () => 100) }
-    )
+  it('query finale con un solo mod: contributo con la stat nel not', async () => {
+    const { client, searches } = fakeClient((q) => {
+      const n = modIdsOf(q).length
+      if (n >= 2) return { total: 2, prices: [10, 20] }
+      if (n === 1) return { total: 12, prices: range(12, () => 100) }
+      return { total: 12, prices: range(12, () => 60) }
+    })
     const v = await deepAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))
-    expect(searches.map((q) => modIdsOf(q))).toEqual([[MOVE, LIFE], [MOVE]])
-    expect(v.contributions).toBeUndefined()
+    expect(searches.map((q) => modIdsOf(q))).toEqual([[MOVE, LIFE], [MOVE, LIFE], [MOVE], []])
+    expect(notIdsOf(searches[3])).toEqual([...notIdsOf(searches[2]), MOVE])
+    expect(v.contributions).toEqual([{ statId: MOVE, text: `text ${MOVE}`, deltaExalted: 40 }])
     expect(v.comparablesCount).toBe(12)
   })
 
@@ -390,11 +572,11 @@ describe('deepAnalysis', () => {
     const { client } = fakeClient((q) =>
       modIdsOf(q).length >= 4
         ? { total: 2, prices: [10, 20] }
-        : { total: 12, prices: range(12, () => 50) }
+        : { total: 20, prices: range(20, () => 50) }
     )
     const v = await deepAnalysis(boots(fourMods()), deps(client))
     expect(v.verdict).toBe('ottimo')
-    // 12 prezzi uguali darebbero confidenza alta
+    // 20 prezzi uguali con il gruppo not darebbero confidenza alta
     expect(v.confidence).toBe('media')
     expect(v.warnings).toContain(
       'Stima basata su 3 affissi su 4: per gli altri non ci sono abbastanza oggetti simili'
@@ -405,7 +587,7 @@ describe('deepAnalysis', () => {
     const { client } = fakeClient((q) =>
       modIdsOf(q).length >= 2
         ? { total: 2, prices: [10, 20] }
-        : { total: 12, prices: range(12, () => 50) }
+        : { total: 20, prices: range(20, () => 50) }
     )
     const v = await deepAnalysis(boots(fourMods()), deps(client))
     expect(v.warnings).toContain(
@@ -414,11 +596,38 @@ describe('deepAnalysis', () => {
     expect(v.confidence).toBe('media')
   })
 
-  it('senza rilassamento nessun avviso sugli affissi e confidenza piena', async () => {
-    const { client } = fakeClient(() => ({ total: 12, prices: range(12, () => 50) }))
+  it('senza mod tolti, con il gruppo not e >= 15 prezzi: confidenza alta', async () => {
+    const { client } = fakeClient(() => ({ total: 20, prices: range(20, () => 50) }))
     const v = await deepAnalysis(boots(fourMods()), deps(client))
     expect(v.confidence).toBe('alta')
     expect(v.warnings.some((w) => w.startsWith('Stima basata su'))).toBe(false)
+  })
+
+  it('solo valori a ×0.6 (nessun mod tolto): confidenza alta possibile, nessun avviso', async () => {
+    const { client } = fakeClient((_q, call) =>
+      call === 1 ? { total: 2, prices: [10, 20] } : { total: 20, prices: range(20, () => 50) }
+    )
+    const v = await deepAnalysis(boots(fourMods()), deps(client))
+    expect(v.confidence).toBe('alta')
+    expect(v.warnings.some((w) => w.startsWith('Stima basata su'))).toBe(false)
+  })
+
+  it('classe senza pesi: confidenza al massimo media', async () => {
+    const { client } = fakeClient(() => ({ total: 20, prices: range(20, () => 50) }))
+    const v = await deepAnalysis(
+      boots([mod(MOVE, 25), mod(LIFE, 80)], { itemClass: 'flask.charm' }),
+      deps(client)
+    )
+    expect(v.confidence).toBe('media')
+  })
+
+  it('Eccellente con confidenza non alta: avviso "Pochi oggetti simili"', async () => {
+    const { client } = fakeClient(() => ({ total: 8, prices: range(8, (i) => 400 + i) }))
+    const v = await deepAnalysis(boots(fourMods()), deps(client))
+    expect(v.verdict).toBe('eccellente')
+    expect(v.warnings).toContain(
+      'Pochi oggetti simili in vendita: controlla il prezzo sul trade prima di venderlo'
+    )
   })
 
   it('onProgress con maxSearches di default (8)', async () => {
