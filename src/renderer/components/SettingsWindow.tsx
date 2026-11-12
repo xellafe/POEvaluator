@@ -156,9 +156,11 @@ export function SettingsWindow(): JSX.Element {
             <label htmlFor="league">
               <span className="f-label">Lega</span>
               <span className="f-help">
-                {leagues === null || leagues.length > 0
-                  ? 'Lega in cui cercare i prezzi'
-                  : 'Elenco non disponibile: scrivi il nome esatto della lega'}
+                {leagues === null
+                  ? "Carico l'elenco delle leghe…"
+                  : leagues.length > 0
+                    ? 'Lega in cui cercare i prezzi'
+                    : 'Elenco non disponibile: scrivi il nome esatto della lega'}
               </span>
             </label>
             {leagues && leagues.length > 0 ? (
@@ -182,7 +184,6 @@ export function SettingsWindow(): JSX.Element {
                 id="league"
                 className="input wide"
                 value={form.league}
-                disabled={leagues === null}
                 aria-invalid={form.league.trim() === ''}
                 onChange={(e) => update({ league: e.target.value })}
               />

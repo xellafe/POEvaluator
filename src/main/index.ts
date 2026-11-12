@@ -190,6 +190,7 @@ function registerIpc(): void {
     try {
       const ids = await tradeClient.leagues('user')
       leaguesCache = { at: Date.now(), ids }
+      log(`league disponibili: ${ids.join(', ')}`)
       return ids
     } catch (e) {
       log(`league non scaricate: ${errMsg(e)}`)
