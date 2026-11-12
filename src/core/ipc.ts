@@ -61,6 +61,8 @@ export const IPC = {
   started: 'valuation:started',
   analyzing: 'valuation:analyzing',
   deep: 'valuation:deep',
+  /** renderer -> main: pannello chiuso durante l'analisi approfondita, annullala */
+  cancel: 'valuation:cancel',
   getSettings: 'settings:get',
   setSettings: 'settings:set',
   /** renderer -> main: league PoE2 disponibili sul trade */
@@ -79,6 +81,8 @@ export interface PoeApi {
   onAnalyzing(cb: (p: AnalyzingPayload) => void): () => void
   onDismiss(cb: () => void): () => void
   requestDeep(): void
+  /** Annulla l'analisi approfondita in corso (pannello chiuso prima della fine). */
+  cancelDeep(): void
   /** true: l'overlay riceve i click; false: torna trasparente ai click (passano al gioco). */
   setInteractive(on: boolean): void
   getSettings(): Promise<Settings>

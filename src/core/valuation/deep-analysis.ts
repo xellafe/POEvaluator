@@ -1,7 +1,7 @@
 import type { ListingStore } from '../db/listing-store'
 import type { Settings } from '../settings'
 import { buildQuery, type QueryOptions } from '../trade/query-builder'
-import { tradeUrl, type SearchResult, type TradeClient } from '../trade/trade-client'
+import { abortError, tradeUrl, type SearchResult, type TradeClient } from '../trade/trade-client'
 import { toListing } from '../trade/listing-mapper'
 import type { ItemMod, Listing, RareItem, Valuation } from '../types'
 import { weightsFor, type Weights } from './features'
@@ -15,6 +15,8 @@ export interface DeepDeps {
   now: () => Date
   /** Budget di chiamate a `client.search` (i fetch non contano). Default 8. */
   maxSearches?: number
+  /** Annullamento (pannello chiuso): l'analisi si ferma tra un passo e l'altro con AbortError. */
+  signal?: AbortSignal
 }
 
 export const DEFAULT_MAX_SEARCHES = 8
@@ -64,14 +66,19 @@ const median = (prices: number[]): number =>
  * stima lo dice in un avviso e la confidenza non supera "media". `searches` riporta le ricerche
  * eseguite.
  * Ogni ricerca conta nel budget `maxSearches`; gli errori del client vengono propagati
- * (le inserzioni già recuperate restano salvate).
+ * (le inserzioni già recuperate restano salvate). Con `deps.signal` annullato rigetta con
+ * AbortError al passo successivo, senza altri `onProgress`.
  */
 export async function deepAnalysis(
   item: RareItem,
   deps: DeepDeps,
   onProgress?: (done: number, total: number) => void
 ): Promise<Valuation> {
-  const { client, store, settings } = deps
+  const { client, store, settings, signal } = deps
+  const checkAborted = (): void => {
+    if (signal?.aborted) throw abortError()
+  }
+  checkAborted()
   const league = settings.league
   const maxSearches = Math.max(1, deps.maxSearches ?? DEFAULT_MAX_SEARCHES)
   const now = deps.now()
@@ -84,8 +91,10 @@ export async function deepAnalysis(
     const r = await client.search(
       league,
       buildQuery(item, { ...opts, valueFactor: VALUE_FACTOR }),
-      'user'
+      'user',
+      signal
     )
+    checkAborted()
     searches++
     onProgress?.(searches, maxSearches)
     return r
@@ -94,11 +103,12 @@ export async function deepAnalysis(
   /** Recupera i primi `n` risultati, li salva e restituisce i prezzi in exalted. */
   const fetchPrices = async (r: SearchResult, n: number): Promise<number[]> => {
     if (r.total === 0 || r.result.length === 0) return []
-    const raw = await client.fetchListings(r.result.slice(0, n), r.id, 'user')
+    const raw = await client.fetchListings(r.result.slice(0, n), r.id, 'user', signal)
     const listings = raw
       .map((x) => toListing(x, league, deps.toExalted, now, item.itemClass))
       .filter((l): l is Listing => l !== null)
     if (listings.length > 0) store.upsert(listings)
+    checkAborted()
     return listings.map((l) => l.priceExalted)
   }
 

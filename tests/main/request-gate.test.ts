@@ -92,4 +92,34 @@ describe('RequestGate', () => {
     expect(await gate.runDeep(async () => {})).toBe('ran')
     expect(await gate.capture(async () => 1)).toBe(1)
   })
+
+  it('cancelDeep annulla il signal e libera subito il gate per una nuova analisi', async () => {
+    const gate = new RequestGate()
+    const d = deferred()
+    let firstSignal: AbortSignal | undefined
+    const first = gate.runDeep((signal) => {
+      firstSignal = signal
+      return d.promise
+    })
+    expect(gate.cancelDeep()).toBe(true)
+    expect(firstSignal?.aborted).toBe(true)
+    // la prima non è ancora finita, ma una nuova parte senza "Analisi già in corso"
+    const d2 = deferred()
+    let secondSignal: AbortSignal | undefined
+    const second = gate.runDeep((signal) => {
+      secondSignal = signal
+      return d2.promise
+    })
+    d.resolve()
+    await first
+    // la fine della prima non libera il gate occupato dalla seconda
+    expect(await gate.runDeep(async () => {})).toBe('busy')
+    expect(secondSignal?.aborted).toBe(false)
+    d2.resolve()
+    expect(await second).toBe('ran')
+  })
+
+  it('cancelDeep senza analisi in corso non fa nulla', () => {
+    expect(new RequestGate().cancelDeep()).toBe(false)
+  })
 })

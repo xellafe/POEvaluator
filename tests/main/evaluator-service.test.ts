@@ -188,7 +188,7 @@ describe('EvaluatorService.deep', () => {
     client.blocked = 10_000
     expect(s.deepUnavailable()).toBeNull()
     const r = await s.deep(rareBoots, () => {})
-    expect(r.ok).toBe(true)
+    expect(r?.ok).toBe(true)
     expect(client.searches).toBeGreaterThan(0)
     s.stop()
   })
@@ -198,8 +198,8 @@ describe('EvaluatorService.deep', () => {
     await s.init()
     await s.refreshRates()
     const r = await s.deep(rareBoots, () => {})
-    expect(r.ok).toBe(true)
-    if (!r.ok) return
+    expect(r?.ok).toBe(true)
+    if (!r?.ok) return
     expect(r.valuation.comparablesCount).toBeGreaterThan(0)
     s.stop()
   })
@@ -215,6 +215,22 @@ describe('EvaluatorService.deep', () => {
     client.fail = true
     const r = await s.deep(rareBoots, () => {})
     expect(r).toEqual({ ok: false, ...MESSAGES.tradeError })
+    s.stop()
+  })
+
+  it('annullata: nessun risultato (null) e nessun avanzamento dopo l’annullamento', async () => {
+    const s = await withRates()
+    const ac = new AbortController()
+    const search = client.search.bind(client)
+    client.search = async () => {
+      const r = await search()
+      ac.abort()
+      return r
+    }
+    const progress: number[] = []
+    const r = await s.deep(rareBoots, (d) => progress.push(d), ac.signal)
+    expect(r).toBeNull()
+    expect(progress).toEqual([])
     s.stop()
   })
 })

@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RateLimiter } from '../../src/core/trade/rate-limiter'
-import { parseLeagues, TradeClient, tradeUrl } from '../../src/core/trade/trade-client'
+import {
+  isAbortError,
+  parseLeagues,
+  TradeClient,
+  tradeUrl
+} from '../../src/core/trade/trade-client'
 
 const UA = 'POEvaluator/0.1.0 (+test)'
 
@@ -457,5 +462,79 @@ describe('scheduler senza blocco in testa (D1)', () => {
     await Promise.all(ps)
     expect(f.calls).toHaveLength(4)
     expect(maxInFlight).toBe(1)
+  })
+})
+
+describe('annullamento (signal)', () => {
+  it('con il signal già annullato rifiuta con AbortError senza richieste', async () => {
+    const f = makeFetch(() => json(emptySearch))
+    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const ac = new AbortController()
+    ac.abort()
+    const err = await client.search('Standard', {}, 'user', ac.signal).catch((e) => e)
+    expect(isAbortError(err)).toBe(true)
+    await vi.runAllTimersAsync()
+    expect(f.calls).toHaveLength(0)
+  })
+
+  it('i job in coda vengono tolti e rifiutati con AbortError; gli altri proseguono', async () => {
+    const order: string[] = []
+    const f = makeFetch((c) => {
+      order.push(c.url)
+      return c.init.method === 'POST' ? json(emptySearch) : json({ result: [{ id: 'x' }] })
+    })
+    const client = new TradeClient({
+      userAgent: UA,
+      fetchImpl: f.impl,
+      limiters: {
+        fetch: (() => {
+          const l = new RateLimiter()
+          l.update(new Headers({ 'Retry-After': '30' }))
+          return l
+        })()
+      }
+    })
+    const ac = new AbortController()
+    const mine = client.fetchListings(['a', 'b'], 'q', 'user', ac.signal)
+    const other = client.fetchListings(['c'], 'q', 'background')
+    const mineErr = mine.catch((e) => e)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(client.isIdle()).toBe(false)
+    ac.abort()
+    expect(isAbortError(await mineErr)).toBe(true)
+    expect(client.isIdle()).toBe(true)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(await other).toEqual([{ id: 'x' }])
+    expect(order).toHaveLength(1)
+    expect(order[0]).toContain('/fetch/c?')
+  })
+
+  it('la richiesta in volo si completa ma il risultato si scarta (AbortError)', async () => {
+    const f = makeFetch(async () => {
+      await new Promise((r) => setTimeout(r, 100))
+      return json({ id: 'q', result: ['x'], total: 1 })
+    })
+    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const ac = new AbortController()
+    const err = client.search('Standard', {}, 'user', ac.signal).catch((e) => e)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(f.calls).toHaveLength(1)
+    ac.abort()
+    await vi.advanceTimersByTimeAsync(100)
+    expect(isAbortError(await err)).toBe(true)
+    expect(f.calls).toHaveLength(1)
+  })
+
+  it('un job rimesso in coda dopo un 429 viene tolto se annullato', async () => {
+    const f = makeFetch(() => json({}, 429, { 'Retry-After': '10' }))
+    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const ac = new AbortController()
+    const err = client.leagues('user', ac.signal).catch((e) => e)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(f.calls).toHaveLength(1)
+    ac.abort()
+    expect(isAbortError(await err)).toBe(true)
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(f.calls).toHaveLength(1)
   })
 })

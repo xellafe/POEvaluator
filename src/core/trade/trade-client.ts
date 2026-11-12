@@ -41,9 +41,20 @@ interface Job {
   init: { method: string; body?: string }
   /** Risposte 429 già ricevute per questo job. */
   attempts: number
+  /** Annullamento: in coda il job viene tolto; in volo il risultato si scarta. */
+  signal?: AbortSignal
   resolve: (v: unknown) => void
   reject: (e: Error) => void
 }
+
+/** Errore di una richiesta annullata dal chiamante (name `AbortError`, come fetch). */
+export function abortError(): Error {
+  const e = new Error('Richiesta annullata')
+  e.name = 'AbortError'
+  return e
+}
+
+export const isAbortError = (e: unknown): boolean => e instanceof Error && e.name === 'AbortError'
 
 /** Attesa minima dopo un 429 senza Retry-After (il limiter da solo potrebbe non bloccare). */
 const MIN_429_WAIT_MS = 1000
@@ -86,16 +97,27 @@ export class TradeClient {
     }
   }
 
-  search(league: string, query: object, priority: Priority): Promise<SearchResult> {
+  search(
+    league: string,
+    query: object,
+    priority: Priority,
+    signal?: AbortSignal
+  ): Promise<SearchResult> {
     return this.enqueue(
       'search',
       `${BASE}/api/trade2/search/poe2/${encodeURIComponent(league)}`,
       { method: 'POST', body: JSON.stringify(query) },
-      priority
+      priority,
+      signal
     ) as Promise<SearchResult>
   }
 
-  async fetchListings(ids: string[], queryId: string, priority: Priority): Promise<unknown[]> {
+  async fetchListings(
+    ids: string[],
+    queryId: string,
+    priority: Priority,
+    signal?: AbortSignal
+  ): Promise<unknown[]> {
     const chunks: string[][] = []
     for (let i = 0; i < ids.length; i += FETCH_CHUNK) chunks.push(ids.slice(i, i + FETCH_CHUNK))
     // accodate tutte subito: restano consecutive a pari priorità
@@ -106,7 +128,8 @@ export class TradeClient {
             'fetch',
             `${BASE}/api/trade2/fetch/${c.join(',')}?query=${encodeURIComponent(queryId)}`,
             { method: 'GET' },
-            priority
+            priority,
+            signal
           ) as Promise<{ result?: unknown[] }>
       )
     )
@@ -114,12 +137,13 @@ export class TradeClient {
   }
 
   /** League di PoE2 disponibili sul trade (id usati nelle ricerche), nell'ordine del sito. */
-  async leagues(priority: Priority): Promise<string[]> {
+  async leagues(priority: Priority, signal?: AbortSignal): Promise<string[]> {
     const json = await this.enqueue(
       'data',
       `${BASE}/api/trade2/data/leagues`,
       { method: 'GET' },
-      priority
+      priority,
+      signal
     )
     return parseLeagues(json)
   }
@@ -147,10 +171,40 @@ export class TradeClient {
     kind: Kind,
     url: string,
     init: { method: string; body?: string },
-    priority: Priority
+    priority: Priority,
+    signal?: AbortSignal
   ): Promise<unknown> {
     return new Promise((resolve, reject) => {
-      this.queue.push({ priority, seq: this.seq++, kind, url, init, attempts: 0, resolve, reject })
+      if (signal?.aborted) {
+        reject(abortError())
+        return
+      }
+      const onAbort = (): void => {
+        const i = this.queue.indexOf(job)
+        if (i < 0) return // in volo: il risultato verrà scartato in pump()
+        this.queue.splice(i, 1)
+        job.reject(abortError())
+        this.wake?.() // il pump in attesa rivaluta la coda (eventualmente vuota)
+      }
+      const job: Job = {
+        priority,
+        seq: this.seq++,
+        kind,
+        url,
+        init,
+        attempts: 0,
+        signal,
+        resolve: (v) => {
+          signal?.removeEventListener('abort', onAbort)
+          resolve(v)
+        },
+        reject: (e) => {
+          signal?.removeEventListener('abort', onAbort)
+          reject(e)
+        }
+      }
+      signal?.addEventListener('abort', onAbort)
+      this.queue.push(job)
       // avvio asincrono: le richieste accodate nello stesso tick competono per priorità
       void Promise.resolve().then(() => this.pump())
       this.wake?.()
@@ -204,11 +258,15 @@ export class TradeClient {
         this.inFlight = job
         try {
           const outcome = await this.run(job)
-          if (outcome.retry)
+          if (job.signal?.aborted)
+            job.reject(abortError()) // annullato in volo: risultato scartato
+          else if (outcome.retry)
             this.queue.push(job) // stesso seq e priorità: riprende il suo posto
           else job.resolve(outcome.value)
         } catch (e) {
-          job.reject(e instanceof Error ? e : new Error(String(e)))
+          job.reject(
+            job.signal?.aborted ? abortError() : e instanceof Error ? e : new Error(String(e))
+          )
         }
         this.inFlight = null
       }

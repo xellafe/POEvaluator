@@ -4,7 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { ListingStore } from '../../src/core/db/listing-store'
 import { initParserData } from '../../src/core/parser/parse-item'
 import { DEFAULT_SETTINGS } from '../../src/core/settings'
-import type { TradeClient } from '../../src/core/trade/trade-client'
+import { isAbortError, type TradeClient } from '../../src/core/trade/trade-client'
 import { EMPTY_PREFIX_STAT_ID, EMPTY_SUFFIX_STAT_ID } from '../../src/core/trade/query-builder'
 import type { ItemMod, RareItem } from '../../src/core/types'
 import { deepAnalysis, type DeepDeps } from '../../src/core/valuation/deep-analysis'
@@ -464,5 +464,53 @@ describe('deepAnalysis', () => {
     ])
     expect(v.tradeUrl).toBe('https://www.pathofexile.com/trade2/search/poe2/Dawn/q1')
     expect(store.countByClass('Dawn')['armour.boots']).toBe(12)
+  })
+})
+
+describe('deepAnalysis: annullamento', () => {
+  it('si ferma tra un passo e l’altro, non chiama onProgress dopo l’annullamento e passa il signal al client', async () => {
+    const ac = new AbortController()
+    const signals: (AbortSignal | undefined)[] = []
+    const { client, searches } = fakeClient((_q, call) => {
+      if (call === 2) ac.abort() // annullato mentre la seconda ricerca è in volo
+      return { total: 2, prices: [10, 20] }
+    })
+    const search = client.search.bind(client)
+    client.search = ((...a: Parameters<TradeClient['search']>) => {
+      signals.push(a[3])
+      return search(...a)
+    }) as TradeClient['search']
+    const progress: number[] = []
+    const err = await deepAnalysis(boots(fourMods()), deps(client, { signal: ac.signal }), (d) =>
+      progress.push(d)
+    ).catch((e) => e)
+    expect(isAbortError(err)).toBe(true)
+    expect(searches).toHaveLength(2)
+    expect(progress).toEqual([1])
+    expect(signals.every((s) => s === ac.signal)).toBe(true)
+  })
+
+  it('con il signal già annullato non fa ricerche', async () => {
+    const ac = new AbortController()
+    ac.abort()
+    const { client, searches } = fakeClient(() => ({ total: 12, prices: range(12, () => 50) }))
+    const err = await deepAnalysis(boots(fourMods()), deps(client, { signal: ac.signal })).catch(
+      (e) => e
+    )
+    expect(isAbortError(err)).toBe(true)
+    expect(searches).toHaveLength(0)
+  })
+
+  it('le inserzioni scaricate prima dell’annullamento restano nel database', async () => {
+    const ac = new AbortController()
+    const { client } = fakeClient((_q, call) => {
+      if (call === 2) ac.abort()
+      return { total: 12, prices: range(12, () => 50) }
+    })
+    const err = await deepAnalysis(boots(fourMods()), deps(client, { signal: ac.signal })).catch(
+      (e) => e
+    )
+    expect(isAbortError(err)).toBe(true)
+    expect(store.countByClass('Standard')['armour.boots']).toBe(12)
   })
 })

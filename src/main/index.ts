@@ -94,17 +94,25 @@ const FAILURE_MESSAGE: EvalError = {
   message: 'Si è verificato un errore: riprova'
 }
 
-/** Esegue una valutazione; un'eccezione imprevista diventa comunque una risposta al renderer. */
+/**
+ * Esegue una valutazione; un'eccezione imprevista diventa comunque una risposta al renderer.
+ * Un'analisi annullata (task che restituisce null o `signal` annullato) non manda nulla.
+ */
 async function respond(
   kind: ResultPayload['kind'],
-  task: () => Promise<EvalResult>
+  task: () => Promise<EvalResult | null>,
+  signal?: AbortSignal
 ): Promise<void> {
-  let r: EvalResult
+  let r: EvalResult | null
   try {
     r = await task()
   } catch (e) {
     log(`errore valutazione ${kind}: ${errMsg(e)}`)
     r = { ok: false, ...FAILURE_MESSAGE }
+  }
+  if (r === null || signal?.aborted) {
+    log(`${kind}: annullata`)
+    return
   }
   sendResult(kind, r)
 }
@@ -113,25 +121,36 @@ async function respond(
 async function requestDeep(getText: () => Promise<string>): Promise<void> {
   const svc = service
   if (!svc) return
-  const outcome = await gate.runDeep(() => {
+  const outcome = await gate.runDeep((signal) => {
     sendStarted('deep')
-    return respond('deep', async () => {
-      const text = await getText()
-      lastItemText = text
-      // la stima rapida (locale) apre subito il pannello; errori di lettura escono qui
-      const quick = svc.quick(text)
-      if (!quick.ok) return quick
-      // tassi mancanti o trade in pausa: errore subito, senza aprire il pannello
-      const unavailable = svc.deepUnavailable()
-      if (unavailable) return { ok: false, ...unavailable }
-      send(IPC.analyzing, {
-        item: quick.item,
-        quick: quick.valuation,
-        exaltedPerDivine: exaltedPerDivine(),
-        totalSearches: DEFAULT_MAX_SEARCHES
-      })
-      return svc.deep(text, (done, total) => send(IPC.progress, { done, total }))
-    })
+    return respond(
+      'deep',
+      async () => {
+        const text = await getText()
+        lastItemText = text
+        if (signal.aborted) return null
+        // la stima rapida (locale) apre subito il pannello; errori di lettura escono qui
+        const quick = svc.quick(text)
+        if (!quick.ok) return quick
+        // tassi mancanti o trade in pausa: errore subito, senza aprire il pannello
+        const unavailable = svc.deepUnavailable()
+        if (unavailable) return { ok: false, ...unavailable }
+        send(IPC.analyzing, {
+          item: quick.item,
+          quick: quick.valuation,
+          exaltedPerDivine: exaltedPerDivine(),
+          totalSearches: DEFAULT_MAX_SEARCHES
+        })
+        return svc.deep(
+          text,
+          (done, total) => {
+            if (!signal.aborted) send(IPC.progress, { done, total })
+          },
+          signal
+        )
+      },
+      signal
+    )
   })
   if (outcome === 'busy') sendResult('deep', { ok: false, ...DEEP_BUSY_MESSAGE }, true)
 }
@@ -201,6 +220,10 @@ function registerIpc(): void {
   ipcMain.on(IPC.deep, () => {
     const text = lastItemText
     void requestDeep(async () => text)
+  })
+  // Pannello chiuso durante l'analisi: annullata, il gate si libera subito.
+  ipcMain.on(IPC.cancel, () => {
+    if (gate.cancelDeep()) log('analisi approfondita annullata dal pannello')
   })
   ipcMain.on(IPC.interactive, (_e, on: unknown) => overlay?.setInteractive(on === true))
 }

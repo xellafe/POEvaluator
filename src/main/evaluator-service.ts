@@ -4,7 +4,7 @@ import type { EvalError, EvalResult } from '../core/ipc'
 import { parseItemText } from '../core/parser/parse-item'
 import { makeConverter, type CurrencyRates } from '../core/pricing/currency'
 import type { Settings } from '../core/settings'
-import type { TradeClient } from '../core/trade/trade-client'
+import { isAbortError, type TradeClient } from '../core/trade/trade-client'
 import type { ParseResult } from '../core/types'
 import { deepAnalysis } from '../core/valuation/deep-analysis'
 import { quickEvaluate } from '../core/valuation/quick-evaluator'
@@ -150,7 +150,15 @@ export class EvaluatorService {
     return null
   }
 
-  async deep(text: string, onProgress: (done: number, total: number) => void): Promise<EvalResult> {
+  /**
+   * Analisi approfondita. Con `signal` annullato (pannello chiuso) restituisce null: nessun
+   * risultato da mostrare; le inserzioni già scaricate restano nel database.
+   */
+  async deep(
+    text: string,
+    onProgress: (done: number, total: number) => void,
+    signal?: AbortSignal
+  ): Promise<EvalResult | null> {
     const parsed = parseItemText(text)
     if (!parsed.ok) return { ok: false, ...MESSAGES[parsed.reason] }
     const unavailable = this.deepUnavailable()
@@ -159,11 +167,13 @@ export class EvaluatorService {
     try {
       const valuation = await deepAnalysis(
         parsed.item,
-        { client, store, toExalted: this.toExalted, settings: settings(), now },
+        { client, store, toExalted: this.toExalted, settings: settings(), now, signal },
         onProgress
       )
+      if (signal?.aborted) return null
       return { ok: true, item: parsed.item, valuation }
     } catch (e) {
+      if (isAbortError(e) || signal?.aborted) return null
       this.deps.log?.(`analisi approfondita fallita: ${errMsg(e)}`)
       return { ok: false, ...MESSAGES.tradeError }
     }

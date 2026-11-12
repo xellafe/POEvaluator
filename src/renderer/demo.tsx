@@ -202,6 +202,7 @@ const fakeApi: PoeApi = {
   onAnalyzing: () => () => {},
   onDismiss: () => () => {},
   requestDeep: () => {},
+  cancelDeep: () => {},
   setInteractive: () => {},
   getSettings: async () => DEFAULT_SETTINGS,
   getLeagues: async () => ['Runes of Aldur', 'HC Runes of Aldur', 'Standard', 'Hardcore'],

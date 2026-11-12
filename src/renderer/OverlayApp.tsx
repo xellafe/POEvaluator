@@ -97,12 +97,28 @@ export function OverlayApp({ api }: { api: PoeApi }): JSX.Element {
   const [badgeHovered, setBadgeHovered] = useState(false)
 
   const quickAnchor = useRef<Point | null>(null)
-  /** Analisi approfondita corrente: punto della richiesta e chiusura da parte dell'utente. */
-  const deep = useRef<{ anchor: Point | null; closed: boolean }>({ anchor: null, closed: false })
+  /**
+   * Analisi approfondita corrente: punto della richiesta, chiusura da parte dell'utente e se è
+   * ancora in corso (chiudendo il pannello prima della fine si annulla).
+   */
+  const deep = useRef<{ anchor: Point | null; closed: boolean; running: boolean }>({
+    anchor: null,
+    closed: false,
+    running: false
+  })
   const mouse = useRef<Point | null>(null)
 
   const refreshSettings = useCallback(() => {
     api.getSettings().then(setSettings, () => {})
+  }, [api])
+
+  /** Pannello chiuso (X o Esc): con l'analisi ancora in corso il main la annulla. */
+  const closeDeep = useCallback(() => {
+    deep.current.closed = true
+    if (deep.current.running) {
+      deep.current.running = false
+      api.cancelDeep()
+    }
   }, [api])
 
   const onResult = useCallback((r: ResultPayload) => {
@@ -123,6 +139,7 @@ export function OverlayApp({ api }: { api: PoeApi }): JSX.Element {
       setBadge({ state: errorBadge(r, true), anchor: mouse.current })
       return
     }
+    deep.current.running = false
     if (deep.current.closed) return // pannello chiuso dall'utente: risultato ignorato
     if (r.ok) {
       setPanel((cur) =>
@@ -145,7 +162,7 @@ export function OverlayApp({ api }: { api: PoeApi }): JSX.Element {
       api.onStarted((p) => {
         refreshSettings() // hotkey e lega aggiornate se cambiate nelle impostazioni
         if (p.kind === 'quick') quickAnchor.current = p.anchor
-        else deep.current = { anchor: p.anchor, closed: false }
+        else deep.current = { anchor: p.anchor, closed: false, running: true }
         setBadge({ state: { type: 'loading' }, anchor: p.anchor })
       }),
       api.onAnalyzing((p) => {
@@ -171,11 +188,11 @@ export function OverlayApp({ api }: { api: PoeApi }): JSX.Element {
       api.onDismiss(() => {
         setBadge(null)
         setPanel(null)
-        deep.current.closed = true
+        closeDeep()
       })
     ]
     return () => offs.forEach((off) => off())
-  }, [api, refreshSettings, onResult])
+  }, [api, refreshSettings, onResult, closeDeep])
 
   // Scadenza del badge (sospesa mentre il mouse è sopra).
   useEffect(() => {
@@ -203,8 +220,8 @@ export function OverlayApp({ api }: { api: PoeApi }): JSX.Element {
 
   const closePanel = useCallback(() => {
     setPanel(null)
-    deep.current.closed = true
-  }, [])
+    closeDeep()
+  }, [closeDeep])
 
   return (
     <>

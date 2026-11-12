@@ -11,7 +11,8 @@ export const DEEP_BUSY_MESSAGE: EvalError = {
 export class RequestGate {
   private captureTail: Promise<unknown> = Promise.resolve()
   private quickRunning = false
-  private deepRunning = false
+  /** Analisi approfondita in corso (null se nessuna): il suo controller di annullamento. */
+  private deep: AbortController | null = null
 
   /** Mutex sulla cattura: le catture (rapide o approfondite) non si sovrappongono mai. */
   capture<T>(fn: () => Promise<T>): Promise<T> {
@@ -35,15 +36,31 @@ export class RequestGate {
     }
   }
 
-  /** Analisi approfondita: con un'altra in corso restituisce 'busy' (il chiamante risponde con DEEP_BUSY_MESSAGE). */
-  async runDeep(task: () => Promise<void>): Promise<'ran' | 'busy'> {
-    if (this.deepRunning) return 'busy'
-    this.deepRunning = true
+  /**
+   * Analisi approfondita: con un'altra in corso restituisce 'busy' (il chiamante risponde con
+   * DEEP_BUSY_MESSAGE). Il task riceve il signal annullato da `cancelDeep`.
+   */
+  async runDeep(task: (signal: AbortSignal) => Promise<void>): Promise<'ran' | 'busy'> {
+    if (this.deep) return 'busy'
+    const ac = new AbortController()
+    this.deep = ac
     try {
-      await task()
+      await task(ac.signal)
       return 'ran'
     } finally {
-      this.deepRunning = false
+      // un'analisi annullata che finisce dopo non libera il gate di quella successiva
+      if (this.deep === ac) this.deep = null
     }
+  }
+
+  /**
+   * Annulla l'analisi approfondita in corso (pannello chiuso) e libera subito il gate: una nuova
+   * analisi può partire mentre quella annullata si chiude. false se non ce n'era una.
+   */
+  cancelDeep(): boolean {
+    if (!this.deep) return false
+    this.deep.abort()
+    this.deep = null
+    return true
   }
 }
