@@ -94,11 +94,12 @@ describe('default-weights.json', () => {
     }
   })
 
-  it('pesi in 0..1, 5-10 stat per classe, id trade esistenti', () => {
+  // massimo 20: scettri, bastoni e bacchette hanno le stat per elemento e degli alleati (fix R31 I3)
+  it('pesi in 0..1, 5-20 stat per classe, id trade esistenti', () => {
     for (const [cls, w] of Object.entries(DEFAULT_WEIGHTS)) {
       const entries = Object.entries(w)
       expect(entries.length, cls).toBeGreaterThanOrEqual(5)
-      expect(entries.length, cls).toBeLessThanOrEqual(10)
+      expect(entries.length, cls).toBeLessThanOrEqual(20)
       for (const [id, v] of entries) {
         expect(statIds.has(id), `${cls} ${id}`).toBe(true)
         expect(v).toBeGreaterThanOrEqual(0)
