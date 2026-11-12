@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   describeRateLimitHeaders,
   hasActiveRestriction,
+  MAX_LOADED_BLOCK_MS,
   parseRateLimitHeaders,
   RateLimiter
 } from '../../src/core/trade/rate-limiter'
@@ -353,5 +354,39 @@ describe('stato persistente (toJSON / fromJSON)', () => {
       serverHits: [{ group: 'Ip', periodSec: 10, hits: 2, at: 4000 }],
       blockedUntil: 0
     })
+  })
+})
+
+describe('stato persistente con orologio spostato (fromJSON)', () => {
+  const T = 10_000_000
+
+  it('scarta richieste e stati del server successivi all istante corrente', () => {
+    const r = RateLimiter.fromJSON(
+      {
+        rules: [{ group: 'Ip', maxHits: 3, periodSec: 60, restrictSec: 60 }],
+        requests: [T - 1000, T + 1, T + 3_600_000],
+        serverHits: [
+          { group: 'Ip', periodSec: 60, hits: 2, at: T + 10_000 },
+          { group: 'Ip', periodSec: 300, hits: 1, at: T - 5_000 }
+        ],
+        blockedUntil: 0
+      },
+      () => T
+    )
+    expect(r.toJSON().requests).toEqual([T - 1000])
+    expect(r.toJSON().serverHits).toEqual([{ group: 'Ip', periodSec: 300, hits: 1, at: T - 5_000 }])
+    expect(r.delayMs()).toBe(0)
+  })
+
+  it('blockedUntil oltre now + 1 ora viene scartato; entro il tetto resta', () => {
+    expect(MAX_LOADED_BLOCK_MS).toBe(3_600_000)
+    const far = RateLimiter.fromJSON({ blockedUntil: T + MAX_LOADED_BLOCK_MS + 1 }, () => T)
+    expect(far.blockedForMs()).toBe(0)
+    expect(far.blockEndedAgoMs()).toBe(Infinity)
+    const near = RateLimiter.fromJSON({ blockedUntil: T + MAX_LOADED_BLOCK_MS }, () => T)
+    expect(near.blockedForMs()).toBe(MAX_LOADED_BLOCK_MS)
+    // un blocco già finito resta (serve alla pausa della raccolta dopo un riavvio)
+    const past = RateLimiter.fromJSON({ blockedUntil: T - 60_000 }, () => T)
+    expect(past.blockEndedAgoMs()).toBe(60_000)
   })
 })

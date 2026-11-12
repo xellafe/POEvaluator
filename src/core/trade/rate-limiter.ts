@@ -86,6 +86,12 @@ export interface RateLimiterJSON {
   blockedUntil: number
 }
 
+/**
+ * Durata massima di un blocco caricato da disco: oltre, il valore viene scartato (orologio di
+ * sistema spostato all'indietro dopo il salvataggio, file alterato).
+ */
+export const MAX_LOADED_BLOCK_MS = 60 * 60_000
+
 /** Quota di ogni regola che le richieste background possono usare. */
 export const BACKGROUND_SHARE = 0.5
 
@@ -237,7 +243,8 @@ export class RateLimiter {
     const t = now()
     const maxPeriodMs = l.maxPeriodMs()
     l.requests = arr(o.requests)
-      .filter((r): r is number => isNum(r) && r >= 0 && t - r < maxPeriodMs)
+      // istanti nel futuro: orologio spostato all'indietro, scartati
+      .filter((r): r is number => isNum(r) && r >= 0 && r <= t && t - r < maxPeriodMs)
       .sort((a, b) => a - b)
     for (const v of arr(o.serverHits)) {
       const s = (v ?? {}) as Record<string, unknown>
@@ -248,6 +255,7 @@ export class RateLimiter {
         isNum(s.hits) &&
         s.hits >= 0 &&
         isNum(s.at) &&
+        s.at <= t &&
         t - s.at < s.periodSec * 1000
       ) {
         l.serverHits.set(`${s.group}|${s.periodSec}`, {
@@ -258,7 +266,9 @@ export class RateLimiter {
         })
       }
     }
-    if (isNum(o.blockedUntil) && o.blockedUntil > 0) l.blockedUntil = o.blockedUntil
+    if (isNum(o.blockedUntil) && o.blockedUntil > 0 && o.blockedUntil <= t + MAX_LOADED_BLOCK_MS) {
+      l.blockedUntil = o.blockedUntil
+    }
     return l
   }
 

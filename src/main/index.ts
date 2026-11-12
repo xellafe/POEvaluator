@@ -28,7 +28,9 @@ import { createTray, openSettingsWindow, Overlay, sendToSettings } from './overl
 import { DEEP_BUSY_MESSAGE, RequestGate } from './request-gate'
 import { applyPatch, loadSettings, saveSettings, settingsError } from './settings-file'
 
-const log = (msg: string): void => console.log(`[poevaluator] ${msg}`)
+/** Ora locale hh:mm:ss: serve a capire quale finestra del rate limit (10/60/300 s) scatta. */
+const clock = (): string => new Date().toTimeString().slice(0, 8)
+const log = (msg: string): void => console.log(`[poevaluator ${clock()}] ${msg}`)
 const errMsg = (e: unknown): string => (e instanceof Error ? (e.stack ?? e.message) : String(e))
 
 // Nessun crash per promise rifiutate non gestite (es. un tick del collector che rigetta fuori dal suo try).

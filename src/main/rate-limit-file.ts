@@ -8,6 +8,9 @@ import type { Kind } from '../core/trade/trade-client'
 /** Scrittura 2 s dopo l'ultima risposta del trade. */
 export const RATE_LIMITS_SAVE_DELAY_MS = 2000
 
+/** Versione del formato del file; una versione diversa (o assente) fa ripartire da uno stato vuoto. */
+export const RATE_LIMITS_FILE_VERSION = 1
+
 const KINDS: Kind[] = ['search', 'fetch', 'data']
 
 /**
@@ -24,6 +27,12 @@ export function loadRateLimiters(
   try {
     const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'))
     if (parsed !== null && typeof parsed === 'object') json = parsed as Record<string, unknown>
+    if (json.version !== RATE_LIMITS_FILE_VERSION) {
+      log(
+        `stato dei rate limit con versione ${String(json.version)} sconosciuta, si riparte da zero`
+      )
+      json = {}
+    }
   } catch (e) {
     const missing = (e as NodeJS.ErrnoException)?.code === 'ENOENT'
     if (!missing) log(`stato dei rate limit illeggibile, si riparte da zero: ${String(e)}`)
@@ -41,7 +50,7 @@ export class RateLimitFile {
     private readonly deps: {
       path: string
       /** Stato corrente da salvare (TradeClient.snapshot). */
-      snapshot: () => unknown
+      snapshot: () => object
       log: (msg: string) => void
       delayMs?: number
     }
@@ -59,7 +68,11 @@ export class RateLimitFile {
     this.timer = null
     try {
       const tmp = `${this.deps.path}.tmp`
-      writeFileSync(tmp, JSON.stringify(this.deps.snapshot()) + '\n', 'utf8')
+      writeFileSync(
+        tmp,
+        JSON.stringify({ version: RATE_LIMITS_FILE_VERSION, ...this.deps.snapshot() }) + '\n',
+        'utf8'
+      )
       renameSync(tmp, this.deps.path)
     } catch (e) {
       this.deps.log(`stato dei rate limit non salvato: ${e instanceof Error ? e.message : e}`)

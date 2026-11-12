@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RateLimiter } from '../../src/core/trade/rate-limiter'
 import {
   loadRateLimiters,
+  RATE_LIMITS_FILE_VERSION,
   RATE_LIMITS_SAVE_DELAY_MS,
   RateLimitFile
 } from '../../src/main/rate-limit-file'
@@ -53,9 +54,24 @@ describe('loadRateLimiters', () => {
     expect(log).toHaveBeenCalledTimes(1)
   })
 
+  it('versione assente o sconosciuta: limiter vuoti e una riga di log', () => {
+    expect(RATE_LIMITS_FILE_VERSION).toBe(1)
+    const search = limiterAt(T0).toJSON()
+    for (const content of [{ search }, { version: 2, search }]) {
+      writeFileSync(path, JSON.stringify(content))
+      const log = vi.fn()
+      const l = loadRateLimiters(path, () => T0, log)
+      expect(l.search.toJSON()).toEqual(EMPTY)
+      expect(log).toHaveBeenCalledTimes(1)
+    }
+  })
+
   it('ripristina lo stato salvato e scarta ciò che è scaduto', () => {
     const search = limiterAt(T0 - 30_000).toJSON()
-    writeFileSync(path, JSON.stringify({ search, fetch: 'rotto' }))
+    writeFileSync(
+      path,
+      JSON.stringify({ version: RATE_LIMITS_FILE_VERSION, search, fetch: 'rotto' })
+    )
     const l = loadRateLimiters(
       path,
       () => T0,
@@ -86,7 +102,7 @@ describe('RateLimitFile', () => {
     vi.advanceTimersByTime(RATE_LIMITS_SAVE_DELAY_MS - 1)
     expect(existsSync(path)).toBe(false)
     vi.advanceTimersByTime(1)
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ n: 1 })
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ version: 1, n: 1 })
     expect(existsSync(`${path}.tmp`)).toBe(false)
   })
 
@@ -96,7 +112,7 @@ describe('RateLimitFile', () => {
     const file = new RateLimitFile({ path, snapshot: () => ({ n: ++n }), log: () => {} })
     file.schedule()
     file.flush()
-    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ n: 1 })
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ version: 1, n: 1 })
     vi.advanceTimersByTime(RATE_LIMITS_SAVE_DELAY_MS * 2)
     expect(n).toBe(1)
   })

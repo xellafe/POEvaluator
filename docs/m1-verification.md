@@ -1,6 +1,6 @@
 # Verifica M1 in gioco
 
-Da compilare durante la sessione di prova. Avvio: `npm run dev` da un terminale, che resta aperto per leggere i log (righe `[poevaluator] …`).
+Da compilare durante la sessione di prova. Avvio: `npm run dev` da un terminale, che resta aperto per leggere i log (righe `[poevaluator hh:mm:ss] …`).
 
 ## 1. Controlli automatici (eseguiti il 2026-11-12)
 
