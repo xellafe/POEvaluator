@@ -44,6 +44,8 @@ export class EvaluatorService {
   private converter = makeConverter(null)
   private timer: ReturnType<typeof setInterval> | null = null
   private refreshing: Promise<void> | null = null
+  /** Un refresh richiesto mentre un altro era in volo (es. cambio league): rifarlo subito dopo. */
+  private rerun = false
 
   constructor(private readonly deps: EvaluatorDeps) {}
 
@@ -63,7 +65,12 @@ export class EvaluatorService {
   /** Da chiamare quando cambia la league: tassi salvati della nuova league, poi aggiornamento. */
   async reloadRates(): Promise<void> {
     this.loadStoredRates()
-    await this.refreshRates()
+    if (this.refreshing) {
+      // il refresh in volo è per la league precedente (il suo risultato verrà scartato)
+      this.rerun = true
+      return this.refreshing
+    }
+    return this.refreshRates()
   }
 
   stop(): void {
@@ -74,11 +81,18 @@ export class EvaluatorService {
   /** Scarica i tassi (max 20 s); in caso di errore tiene i precedenti. Non rigetta mai. */
   refreshRates(): Promise<void> {
     if (!this.refreshing) {
-      this.refreshing = this.doRefresh().finally(() => {
+      this.refreshing = this.runRefreshes().finally(() => {
         this.refreshing = null
       })
     }
     return this.refreshing
+  }
+
+  private async runRefreshes(): Promise<void> {
+    do {
+      this.rerun = false
+      await this.doRefresh()
+    } while (this.rerun)
   }
 
   quick(text: string): EvalResult {
@@ -110,9 +124,9 @@ export class EvaluatorService {
     }
   }
 
+  /** Tassi salvati della league corrente; se non ce ne sono, nessun tasso (mai quelli di un'altra league). */
   private loadStoredRates(): void {
-    const stored = this.deps.store.latestRates(this.deps.settings().league)
-    if (stored) this.converter = makeConverter(stored)
+    this.converter = makeConverter(this.deps.store.latestRates(this.deps.settings().league))
   }
 
   private async doRefresh(): Promise<void> {

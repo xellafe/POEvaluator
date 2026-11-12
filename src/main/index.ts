@@ -12,6 +12,7 @@ import { TradeClient } from '../core/trade/trade-client'
 import { copyHoveredItem } from './capture'
 import { EvaluatorService, type EvalResult } from './evaluator-service'
 import { matchesHotkey, parseHotkey, type Hotkey } from './input'
+import { DEEP_BUSY_MESSAGE, RequestGate } from './request-gate'
 import { applyPatch, loadSettings, saveSettings } from './settings-file'
 
 const log = (msg: string): void => console.log(`[poevaluator] ${msg}`)
@@ -34,7 +35,7 @@ let service: EvaluatorService | null = null
 let collector: BackgroundCollector | null = null
 let hotkeys: { quick: Hotkey | null; deep: Hotkey | null } = { quick: null, deep: null }
 let lastItemText = ''
-let busy = false
+const gate = new RequestGate()
 
 function createWindow(): void {
   // Finestra provvisoria del template: l'overlay arriva con il Task 13.
@@ -89,37 +90,53 @@ function registerHotkeys(): void {
   log(`hotkey: rapida ${settings.hotkeys.quick}, approfondita ${settings.hotkeys.deep}`)
 }
 
-async function runDeep(text: string): Promise<void> {
-  if (!service) return
-  lastItemText = text
-  const r = await service.deep(text, (done, total) => send(IPC.progress, { done, total }))
-  sendResult('deep', r)
+const FAILURE_MESSAGE = 'Valutazione non riuscita: riprova'
+
+/** Esegue una valutazione; un'eccezione imprevista diventa comunque una risposta al renderer. */
+async function respond(
+  kind: ResultPayload['kind'],
+  task: () => Promise<EvalResult>
+): Promise<void> {
+  let r: EvalResult
+  try {
+    r = await task()
+  } catch (e) {
+    log(`errore valutazione ${kind}: ${errMsg(e)}`)
+    r = { ok: false, message: FAILURE_MESSAGE }
+  }
+  sendResult(kind, r)
 }
 
-/** Una cattura/valutazione alla volta: la ripetizione del tasto tenuto premuto viene ignorata. */
-async function exclusive(task: () => Promise<void>): Promise<void> {
-  if (busy) return
-  busy = true
-  try {
-    await task()
-  } catch (e) {
-    log(`errore valutazione: ${errMsg(e)}`)
-  } finally {
-    busy = false
-  }
+/** Analisi approfondita; con un'altra in corso risponde subito "Analisi già in corso". */
+async function requestDeep(getText: () => Promise<string>): Promise<void> {
+  const svc = service
+  if (!svc) return
+  const outcome = await gate.runDeep(() =>
+    respond('deep', async () => {
+      const text = await getText()
+      lastItemText = text
+      return svc.deep(text, (done, total) => send(IPC.progress, { done, total }))
+    })
+  )
+  if (outcome === 'busy') sendResult('deep', { ok: false, message: DEEP_BUSY_MESSAGE })
 }
+
+const captureItem = (): Promise<string> => gate.capture(copyHoveredItem)
 
 function onKeydown(e: Parameters<typeof matchesHotkey>[0]): void {
   if (!service || !isGameFocused()) return
   const svc = service
   if (hotkeys.quick && matchesHotkey(e, hotkeys.quick)) {
-    void exclusive(async () => {
-      const text = await copyHoveredItem()
-      lastItemText = text
-      sendResult('quick', svc.quick(text))
-    })
+    // la rapida è locale: parte anche durante un'approfondita (solo la cattura è in serie)
+    void gate.runQuick(() =>
+      respond('quick', async () => {
+        const text = await captureItem()
+        lastItemText = text
+        return svc.quick(text)
+      })
+    )
   } else if (hotkeys.deep && matchesHotkey(e, hotkeys.deep)) {
-    void exclusive(async () => runDeep(await copyHoveredItem()))
+    void requestDeep(captureItem)
   }
 }
 
@@ -140,7 +157,8 @@ function registerIpc(): void {
   })
   // "Analizza" sul badge: analisi approfondita dell'ultimo oggetto catturato.
   ipcMain.on(IPC.deep, () => {
-    void exclusive(() => runDeep(lastItemText))
+    const text = lastItemText
+    void requestDeep(async () => text)
   })
 }
 

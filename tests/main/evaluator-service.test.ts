@@ -4,7 +4,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { ListingStore } from '../../src/core/db/listing-store'
 import { initParserData } from '../../src/core/parser/parse-item'
 import type { CurrencyRates } from '../../src/core/pricing/currency'
-import { DEFAULT_SETTINGS } from '../../src/core/settings'
+import { DEFAULT_SETTINGS, type Settings } from '../../src/core/settings'
 import type { TradeClient } from '../../src/core/trade/trade-client'
 import {
   EvaluatorService,
@@ -70,12 +70,13 @@ afterEach(() => {
 })
 
 function service(
-  fetchRates: () => Promise<CurrencyRates> = () => new Promise(() => {})
+  fetchRates: () => Promise<CurrencyRates> = () => new Promise(() => {}),
+  settings: () => Settings = () => DEFAULT_SETTINGS
 ): EvaluatorService {
   return new EvaluatorService({
     client: client as unknown as TradeClient,
     store,
-    settings: () => DEFAULT_SETTINGS,
+    settings,
     fetchRates,
     now: () => NOW,
     log: () => {}
@@ -191,6 +192,49 @@ describe('EvaluatorService tassi', () => {
     const before = calls
     await vi.advanceTimersByTimeAsync(RATES_REFRESH_MS)
     expect(calls).toBe(before + 1)
+    s.stop()
+  })
+
+  it('cambio league senza tassi salvati: niente tassi vecchi (converter null)', async () => {
+    store.saveRates(RATES)
+    let settings: Settings = DEFAULT_SETTINGS
+    const s = service(
+      () => new Promise(() => {}),
+      () => settings
+    )
+    await s.init()
+    expect(s.toExalted(1, 'divine')).toBe(250)
+    settings = { ...DEFAULT_SETTINGS, league: 'Dawn' }
+    void s.reloadRates()
+    expect(s.toExalted(1, 'divine')).toBeNull()
+    s.stop()
+  })
+
+  it('cambio league durante un refresh in corso: secondo fetch subito per la nuova league', async () => {
+    vi.useFakeTimers()
+    let settings: Settings = DEFAULT_SETTINGS
+    const calls: string[] = []
+    const s = service(
+      () => {
+        const league = settings.league
+        calls.push(league)
+        return new Promise((r) =>
+          setTimeout(() => r({ ...RATES, league, exaltedPer: { exalted: 1, divine: 100 } }), 1000)
+        )
+      },
+      () => settings
+    )
+    await s.init() // fetch per Standard in volo
+    expect(calls).toEqual(['Standard'])
+    settings = { ...DEFAULT_SETTINGS, league: 'Dawn' }
+    const reload = s.reloadRates()
+    await vi.advanceTimersByTimeAsync(1000) // il fetch Standard termina (scartato)
+    expect(calls).toEqual(['Standard', 'Dawn'])
+    await vi.advanceTimersByTimeAsync(1000)
+    await reload
+    expect(s.toExalted(1, 'divine')).toBe(100)
+    expect(store.latestRates('Dawn')?.exaltedPer.divine).toBe(100)
+    expect(store.latestRates('Standard')).toBeNull()
     s.stop()
   })
 })
