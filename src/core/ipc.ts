@@ -63,6 +63,11 @@ export const IPC = {
   deep: 'valuation:deep',
   /** renderer -> main: pannello chiuso durante l'analisi approfondita, annullala */
   cancel: 'valuation:cancel',
+  /**
+   * renderer -> main (invoke): contributi degli affissi dell'ultima analisi approfondita (R37);
+   * l'avanzamento arriva su `progress`, il risultato come valore di ritorno.
+   */
+  contributions: 'valuation:contributions',
   getSettings: 'settings:get',
   setSettings: 'settings:set',
   /** renderer -> main: league PoE2 disponibili sul trade */
@@ -85,6 +90,12 @@ export interface PoeApi {
   requestDeep(): void
   /** Annulla l'analisi approfondita in corso (pannello chiuso prima della fine). */
   cancelDeep(): void
+  /**
+   * Calcola i contributi degli affissi dell'ultima analisi approfondita (R37). Risultato `deep`
+   * da mostrare al posto di quello corrente; null se annullato (pannello chiuso). Avanzamento con
+   * `onProgress`; si annulla con `cancelDeep`.
+   */
+  requestContributions(): Promise<ResultPayload | null>
   /** true: l'overlay riceve i click; false: torna trasparente ai click (passano al gioco). */
   setInteractive(on: boolean): void
   getSettings(): Promise<Settings>

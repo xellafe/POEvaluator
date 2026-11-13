@@ -180,9 +180,18 @@ export function OverlayApp({ api }: { api: PoeApi }): JSX.Element {
         })
       }),
       api.onProgress((p) =>
-        setPanel((cur) =>
-          cur && !cur.state.result ? { ...cur, state: { ...cur.state, progress: p } } : cur
-        )
+        setPanel((cur) => {
+          if (!cur) return cur
+          if (!cur.state.result) return { ...cur, state: { ...cur.state, progress: p } }
+          // contributi in corso (R37)
+          if (cur.state.contrib?.status === 'running') {
+            return {
+              ...cur,
+              state: { ...cur.state, contrib: { status: 'running', progress: p } }
+            }
+          }
+          return cur
+        })
       ),
       api.onResult(onResult),
       api.onDismiss(() => {
@@ -218,6 +227,65 @@ export function OverlayApp({ api }: { api: PoeApi }): JSX.Element {
     return () => document.removeEventListener('mousemove', onMove)
   }, [badge, badgeHovered])
 
+  /**
+   * "Calcola il contributo" (R37): il main riprende l'ultima analisi approfondita. Il risultato
+   * sostituisce quello del pannello; un errore resta sotto la sezione; chiudendo il pannello il
+   * calcolo si annulla come l'analisi.
+   */
+  const requestContributions = useCallback(async () => {
+    const current = deep.current
+    current.running = true
+    setPanel((cur) =>
+      cur?.state.result
+        ? {
+            ...cur,
+            state: {
+              ...cur.state,
+              contrib: {
+                status: 'running',
+                progress: { done: 0, total: cur.state.result.basis?.plannedSearches ?? 1 }
+              }
+            }
+          }
+        : cur
+    )
+    let r: ResultPayload | null
+    try {
+      r = await api.requestContributions()
+    } catch {
+      r = {
+        kind: 'deep',
+        exaltedPerDivine: null,
+        ok: false,
+        title: 'Impossibile calcolare',
+        message: 'Si è verificato un errore: riprova'
+      }
+    }
+    // pannello chiuso o sostituito da un'altra analisi: risultato ignorato
+    if (deep.current !== current || current.closed) return
+    current.running = false
+    setPanel((cur) => {
+      if (!cur?.state.result) return cur
+      const state = { ...cur.state, contrib: undefined }
+      if (r === null) return { ...cur, state }
+      if (!r.ok) {
+        return {
+          ...cur,
+          state: { ...state, contrib: { status: 'error', title: r.title, message: r.message } }
+        }
+      }
+      return {
+        ...cur,
+        state: {
+          ...state,
+          // la data dell'analisi in cache resta: i prezzi base sono quelli
+          result: { ...r.valuation, cachedAt: r.valuation.cachedAt ?? cur.state.result.cachedAt },
+          exaltedPerDivine: r.exaltedPerDivine
+        }
+      }
+    })
+  }, [api])
+
   const closePanel = useCallback(() => {
     setPanel(null)
     closeDeep()
@@ -227,7 +295,12 @@ export function OverlayApp({ api }: { api: PoeApi }): JSX.Element {
     <>
       {panel && (
         <Floating api={api} anchor={panel.anchor}>
-          <ItemPanel state={panel.state} league={settings?.league ?? ''} onClose={closePanel} />
+          <ItemPanel
+            state={panel.state}
+            league={settings?.league ?? ''}
+            onClose={closePanel}
+            onContributions={() => void requestContributions()}
+          />
         </Floating>
       )}
       {badge && (

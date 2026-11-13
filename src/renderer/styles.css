@@ -681,6 +681,27 @@ kbd {
   color: var(--muted);
   font-size: 12px;
 }
+/* contributi da calcolare su richiesta (R37): righe senza barra, pulsante e avanzamento */
+.contrib li.idle .mod {
+  grid-column: 1 / -1;
+}
+.contrib-act {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.p-sec .p-progress {
+  margin-top: 10px;
+}
+.contrib-err {
+  margin-top: 8px;
+  color: var(--neg);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
 .warns {
   display: grid;
   gap: 6px;

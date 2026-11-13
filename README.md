@@ -30,10 +30,12 @@ The app starts in the system tray. Open **Impostazioni** from the tray icon to s
 | Hotkey (default) | Action |
 |---|---|
 | `Alt+D` | Quick verdict for the item under the mouse cursor, from locally collected listings (no network request) |
-| `Alt+Shift+D` | In-depth analysis: up to 8 searches on the trade site, spaced out to respect its rate limits |
+| `Alt+Shift+D` | In-depth analysis: a few searches on the trade site (usually 1–3), spaced out to respect its rate limits |
 | `Esc` | Close the badge or the panel |
 
 Hotkeys only work while Path of Exile 2 is the foreground window. Clicking the badge also starts the in-depth analysis.
+
+The contribution of each affix is calculated only on request, with the *Calcola il contributo* button in the panel: it takes one more search per affix used (plus one for the free-slot check), so it is worth it only for the items you care about.
 
 With *background collection* enabled (default), the app slowly downloads listings for the most common item classes while you play, so the quick verdict becomes more accurate over time.
 

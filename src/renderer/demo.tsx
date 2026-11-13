@@ -184,7 +184,105 @@ const BADGES: [string, BadgeState][] = [
 
 const QUICK = v({ verdict: 'ottimo', price: { suggested: 120, min: 90, max: 160 } })
 
+/** Analisi completata con i contributi ancora da calcolare (R37). */
+const ON_DEMAND = v({
+  verdict: 'ottimo',
+  confidence: 'alta',
+  price: {
+    suggested: 280,
+    min: 255,
+    max: 420,
+    patient: 330,
+    typical: 420,
+    sample: [250, 265, 280, 290, 300, 320, 340, 360, 380, 420, 460, 520, 600, 750, 900, 1200]
+  },
+  comparablesCount: 16,
+  tradeUrl: 'https://www.pathofexile.com/trade2/search/poe2/Standard/abc',
+  searches: 1,
+  contributions: 'available',
+  basis: {
+    queryMods: ['explicit.stat_2250533757', 'explicit.stat_3299347043', 'explicit.stat_4220027924'],
+    valueFactor: 0.8,
+    dpsFactor: 0.85,
+    baseP10: 280,
+    plannedSearches: 4
+  },
+  mods: [
+    {
+      statId: 'explicit.stat_2250533757',
+      text: '30% increased Movement Speed',
+      tier: 1,
+      tierCount: 6,
+      status: 'used'
+    },
+    {
+      statId: 'explicit.stat_3299347043',
+      text: '+74 to maximum Life',
+      tier: 6,
+      tierCount: 9,
+      status: 'used'
+    },
+    {
+      statId: 'explicit.stat_1368271171',
+      text: 'Gain 3 Mana per enemy killed',
+      tier: 8,
+      tierCount: 8,
+      status: 'unweighted'
+    },
+    {
+      statId: 'explicit.stat_4220027924',
+      text: '+38% to Cold Resistance',
+      tier: 3,
+      tierCount: 8,
+      status: 'used'
+    },
+    {
+      statId: 'explicit.stat_3261801346',
+      text: '+12 to Dexterity',
+      tier: 7,
+      tierCount: 8,
+      status: 'unweighted'
+    }
+  ]
+})
+
 const PANELS: [string, PanelState][] = [
+  [
+    'Contributi da calcolare',
+    {
+      item: ITEM,
+      quick: QUICK,
+      exaltedPerDivine: RATE,
+      progress: { done: 1, total: 8 },
+      result: ON_DEMAND
+    }
+  ],
+  [
+    'Contributi in corso · 2/4 ricerche',
+    {
+      item: ITEM,
+      quick: QUICK,
+      exaltedPerDivine: RATE,
+      progress: { done: 1, total: 8 },
+      result: ON_DEMAND,
+      contrib: { status: 'running', progress: { done: 1, total: 4 } }
+    }
+  ],
+  [
+    'Contributi · errore',
+    {
+      item: ITEM,
+      quick: QUICK,
+      exaltedPerDivine: RATE,
+      progress: { done: 1, total: 8 },
+      result: ON_DEMAND,
+      contrib: {
+        status: 'error',
+        title: 'Trade in pausa',
+        message: 'Il sito del trade ha limitato le richieste: riprova tra 90 s'
+      }
+    }
+  ],
   [
     'Analisi in corso · 3/8 ricerche',
     {
@@ -216,6 +314,7 @@ const PANELS: [string, PanelState][] = [
         comparablesCount: 16,
         tradeUrl: 'https://www.pathofexile.com/trade2/search/poe2/Standard/abc',
         searches: 5,
+        contributions: 'done',
         mods: [
           {
             statId: 'explicit.stat_2250533757',
@@ -401,6 +500,7 @@ const fakeApi: PoeApi = {
   onDismiss: () => () => {},
   requestDeep: () => {},
   cancelDeep: () => {},
+  requestContributions: async () => null,
   setInteractive: () => {},
   getSettings: async () => DEFAULT_SETTINGS,
   getLeagues: async () => ['Runes of Aldur', 'HC Runes of Aldur', 'Standard', 'Hardcore'],

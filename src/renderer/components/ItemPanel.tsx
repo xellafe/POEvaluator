@@ -29,12 +29,38 @@ export interface PanelState {
   progress: ProgressPayload
   /** Risultato dell'analisi; null finché è in corso. */
   result: Valuation | null
+  /** Contributi degli affissi chiesti dall'utente (R37): in corso o non riusciti. */
+  contrib?: ContribState
 }
+
+export type ContribState =
+  | { status: 'running'; progress: ProgressPayload }
+  | { status: 'error'; title: string; message: string }
 
 interface Props {
   state: PanelState
   league: string
   onClose: () => void
+  /** Pulsante "Calcola il contributo" (R37). */
+  onContributions?: () => void
+}
+
+/** Barra e testo "Ricerca X di N sul trade" (analisi e contributi). */
+function Progress({ progress }: { progress: ProgressPayload }): JSX.Element {
+  const total = Math.max(1, progress.total)
+  const current = Math.min(progress.done + 1, total)
+  return (
+    <div className="p-progress">
+      <div className="track">
+        <span style={{ width: `${(Math.min(progress.done, total) / total) * 100}%` }} />
+      </div>
+      <div className="p-progress-txt">
+        <span>
+          Ricerca {current} di {total} sul trade
+        </span>
+      </div>
+    </div>
+  )
 }
 
 function Head({ item, onClose }: { item: RareItem; onClose: () => void }): JSX.Element {
@@ -54,8 +80,6 @@ function Head({ item, onClose }: { item: RareItem; onClose: () => void }): JSX.E
 
 function Running({ state, onClose }: { state: PanelState; onClose: () => void }): JSX.Element {
   const { item, quick, exaltedPerDivine, progress } = state
-  const total = Math.max(1, progress.total)
-  const current = Math.min(progress.done + 1, total)
   const quickText = [
     verdictLabel(quick.verdict),
     quick.price ? formatPrice(quick.price.suggested, exaltedPerDivine) : null
@@ -70,16 +94,7 @@ function Running({ state, onClose }: { state: PanelState; onClose: () => void })
           <span className="spin" />
           Analisi in corso…
         </span>
-        <div className="p-progress">
-          <div className="track">
-            <span style={{ width: `${(Math.min(progress.done, total) / total) * 100}%` }} />
-          </div>
-          <div className="p-progress-txt">
-            <span>
-              Ricerca {current} di {total} sul trade
-            </span>
-          </div>
-        </div>
+        <Progress progress={progress} />
         <div className="p-prelim">
           Stima rapida: <b>{quickText}</b>
         </div>
@@ -88,7 +103,7 @@ function Running({ state, onClose }: { state: PanelState; onClose: () => void })
         <div className="p-sec">
           <h4>Contributo degli affissi</h4>
           {/* durante l'analisi lo stato viene da oggetto e pesi; "relaxed" si sa solo alla fine */}
-          <ModList mods={modStatuses(item)} pending />
+          <ModList mods={modStatuses(item)} mode="pending" />
         </div>
       )}
       <footer className="p-foot">
@@ -121,10 +136,17 @@ function ModText({ mod }: { mod: DeepMod }): JSX.Element {
 }
 
 /**
- * Tutti gli affissi dell'oggetto nell'ordine del testo (R34): usati (barra del contributo o
- * "in attesa"), nel DPS (etichetta), esclusi (grigi e barrati, con il motivo nel tooltip).
+ * Tutti gli affissi dell'oggetto nell'ordine del testo (R34): usati (barra del contributo, "in
+ * attesa" con `pending`, solo il testo con `idle` = contributi da calcolare, R37), nel DPS
+ * (etichetta), esclusi (grigi, con il motivo nel tooltip).
  */
-function ModList({ mods, pending = false }: { mods: DeepMod[]; pending?: boolean }): JSX.Element {
+function ModList({
+  mods,
+  mode = 'done'
+}: {
+  mods: DeepMod[]
+  mode?: 'pending' | 'idle' | 'done'
+}): JSX.Element {
   const maxDelta = Math.max(1e-9, ...mods.map((m) => Math.abs(m.deltaExalted ?? 0)))
   return (
     <ul className="contrib">
@@ -145,7 +167,14 @@ function ModList({ mods, pending = false }: { mods: DeepMod[]; pending?: boolean
             </li>
           )
         }
-        if (pending) {
+        if (mode === 'idle') {
+          return (
+            <li className="idle" key={key}>
+              <ModText mod={m} />
+            </li>
+          )
+        }
+        if (mode === 'pending') {
           return (
             <li className="pending" key={key}>
               <ModText mod={m} />
@@ -217,7 +246,63 @@ function Distribution({
   )
 }
 
-function Done({ state, league, onClose }: Props & { state: PanelState }): JSX.Element {
+/**
+ * Sezione "Contributo degli affissi". Contributi da calcolare (R37): righe senza barra e pulsante
+ * con il numero di ricerche; durante il calcolo righe "in attesa" e avanzamento; un errore resta
+ * sotto la sezione con il pulsante per riprovare.
+ */
+function ContribSection({
+  mods,
+  v,
+  contrib,
+  onContributions
+}: {
+  mods: DeepMod[]
+  v: Valuation
+  contrib?: ContribState
+  onContributions?: () => void
+}): JSX.Element {
+  const onDemand = v.contributions === 'available'
+  const running = onDemand && contrib?.status === 'running'
+  const mode = !onDemand ? 'done' : running ? 'pending' : 'idle'
+  const used = mods.filter((m) => m.status === 'used').length
+  const planned = v.basis?.plannedSearches ?? used + 1
+  const hasDeltas = mods.some((m) => m.deltaExalted !== undefined)
+  return (
+    <div className="p-sec">
+      <h4>Contributo degli affissi</h4>
+      <ModList mods={mods} mode={mode} />
+      {onDemand && contrib?.status === 'running' && <Progress progress={contrib.progress} />}
+      {onDemand && !running && (
+        <div className="contrib-act">
+          <button className="btn ghost" onClick={onContributions}>
+            Calcola il contributo
+          </button>
+          <span>
+            Circa {planned} {planned === 1 ? 'ricerca' : 'ricerche'} sul trade
+          </span>
+        </div>
+      )}
+      {onDemand && contrib?.status === 'error' && (
+        <div className="contrib-err" role="alert">
+          <b>{contrib.title}.</b> {contrib.message}
+        </div>
+      )}
+      {!onDemand && hasDeltas && (
+        <div className="contrib-note">
+          Differenza di prezzo tra oggetti simili con e senza l&apos;affisso.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Done({
+  state,
+  league,
+  onClose,
+  onContributions
+}: Props & { state: PanelState }): JSX.Element {
   const { item, exaltedPerDivine, progress } = state
   const v = state.result as Valuation
   // ricerche realmente eseguite (dato del core); in mancanza, l'ultimo avanzamento ricevuto
@@ -305,20 +390,17 @@ function Done({ state, league, onClose }: Props & { state: PanelState }): JSX.El
           </div>
           <div>
             <dt>Ricerche</dt>
-            <dd>
-              {searches}/{progress.total}
-            </dd>
+            <dd>{searches}</dd>
           </div>
         </dl>
       </div>
       {mods.length > 0 && (
-        <div className="p-sec">
-          <h4>Contributo degli affissi</h4>
-          <ModList mods={mods} />
-          <div className="contrib-note">
-            Differenza di prezzo tra oggetti simili con e senza l&apos;affisso.
-          </div>
-        </div>
+        <ContribSection
+          mods={mods}
+          v={v}
+          contrib={state.contrib}
+          onContributions={onContributions}
+        />
       )}
       {v.warnings.length > 0 && (
         <div className="p-sec warns">

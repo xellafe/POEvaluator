@@ -51,6 +51,8 @@ let rateLimitFile: RateLimitFile | null = null
 let statsTimer: ReturnType<typeof setInterval> | null = null
 let hotkeys: { quick: Hotkey | null; deep: Hotkey | null } = { quick: null, deep: null }
 let lastItemText = ''
+/** Testo dell'oggetto dell'ultima analisi approfondita (quello del pannello): serve ai contributi. */
+let lastDeepText = ''
 const gate = new RequestGate()
 /** Tenendo premuta una hotkey parte una sola valutazione (keydown ripetuti ignorati fino al keyup). */
 const keyRepeat = new KeyRepeatFilter()
@@ -135,6 +137,7 @@ async function requestDeep(getText: () => Promise<string>): Promise<void> {
       async () => {
         const text = await getText()
         lastItemText = text
+        lastDeepText = text
         if (signal.aborted) return null
         // la stima rapida (locale) apre subito il pannello; errori di lettura escono qui
         const quick = svc.quick(text)
@@ -167,6 +170,52 @@ async function requestDeep(getText: () => Promise<string>): Promise<void> {
     )
   })
   if (outcome === 'busy') sendResult('deep', { ok: false, ...DEEP_BUSY_MESSAGE }, true)
+}
+
+/**
+ * Contributi degli affissi dell'ultima analisi approfondita (R37), con lo stesso gate della deep
+ * (una sola operazione approfondita alla volta, annullabile dal pannello) e la raccolta in
+ * background ferma. Risponde al pannello con il risultato `deep` (null se annullato).
+ */
+async function requestContributions(): Promise<ResultPayload | null> {
+  const svc = service
+  if (!svc) return null
+  const text = lastDeepText
+  let payload: ResultPayload | null = null
+  const outcome = await gate.runDeep(async (signal) => {
+    collector?.deepStarted()
+    let r: EvalResult | null
+    try {
+      r = await svc.contributions(
+        text,
+        (done, total) => {
+          if (!signal.aborted) send(IPC.progress, { done, total })
+        },
+        signal
+      )
+    } catch (e) {
+      log(`errore contributi: ${errMsg(e)}`)
+      r = { ok: false, ...FAILURE_MESSAGE }
+    } finally {
+      collector?.deepEnded()
+    }
+    if (r === null || signal.aborted) {
+      log('contributi: annullati')
+      return
+    }
+    log(`contributi: ${JSON.stringify(r.ok ? r.valuation : r.message)}`)
+    payload = { kind: 'deep', exaltedPerDivine: exaltedPerDivine(), ...r }
+  })
+  if (outcome === 'busy') {
+    return {
+      kind: 'deep',
+      exaltedPerDivine: exaltedPerDivine(),
+      ok: false,
+      ...DEEP_BUSY_MESSAGE,
+      busy: true
+    }
+  }
+  return payload
 }
 
 const captureItem = (): Promise<string> => gate.capture(copyHoveredItem)
@@ -224,6 +273,8 @@ function registerIpc(): void {
     const text = lastItemText
     void requestDeep(async () => text)
   })
+  // Pulsante "Calcola il contributo" del pannello: contributi dell'ultima analisi approfondita.
+  ipcMain.handle(IPC.contributions, () => requestContributions())
   // Pannello chiuso durante l'analisi: annullata, il gate si libera subito.
   ipcMain.on(IPC.cancel, () => {
     if (gate.cancelDeep()) log('analisi approfondita annullata dal pannello')

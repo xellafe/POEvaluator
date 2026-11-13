@@ -25,6 +25,7 @@ const poe: PoeApi = {
   onDismiss: (cb) => subscribe<void>(IPC.dismiss, () => cb()),
   requestDeep: () => ipcRenderer.send(IPC.deep),
   cancelDeep: () => ipcRenderer.send(IPC.cancel),
+  requestContributions: () => ipcRenderer.invoke(IPC.contributions),
   setInteractive: (on) => ipcRenderer.send(IPC.interactive, on === true),
   getSettings: () => ipcRenderer.invoke(IPC.getSettings),
   setSettings: (patch) => ipcRenderer.invoke(IPC.setSettings, patch),
