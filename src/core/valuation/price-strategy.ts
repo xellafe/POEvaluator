@@ -125,16 +125,6 @@ export function cleanParityPrices(pricesExalted: number[]): number[] {
 const PARITY_HIGH_COUNT = 15
 const PARITY_MEDIUM_COUNT = 6
 
-/**
- * Prezzo dell'analisi approfondita sul confronto "alla pari" (R31, R32): prezzo consigliato al
- * 10° percentile dei prezzi puliti (cleanParityPrices), cioè tra i più economici, il prezzo che
- * vende subito; min al 5°, max al 50°. Il verdetto viene dal prezzo consigliato (non dalla
- * mediana: le richieste del trade sono gonfiate rispetto alle vendite). Per Ottimo ed Eccellente
- * `patient` = 25° percentile, solo se supera il consigliato di almeno il 20%.
- * Con meno di 3 prezzi puliti nessun verdetto (il messaggio lo aggiunge il chiamante).
- * Confidenza: alta con >= 15 prezzi e `fullMatch` (nessun mod tolto e gruppo not presente),
- * media con >= 6, altrimenti bassa. Pessimo resta senza prezzo (decisione utente del Task 13).
- */
 /** Prezzi massimi del campione per la barra della distribuzione del pannello. */
 const CHART_SAMPLE = 20
 
@@ -148,6 +138,17 @@ function sampleForChart(sorted: number[]): number[] {
   )
 }
 
+/**
+ * Prezzo dell'analisi approfondita sul confronto "alla pari" (R31, R32): prezzo consigliato al
+ * 10° percentile dei prezzi puliti (cleanParityPrices), cioè tra i più economici, il prezzo che
+ * vende subito; min al 5°, max al 50°. Il verdetto viene dal prezzo consigliato (non dalla
+ * mediana: le richieste del trade sono gonfiate rispetto alle vendite). R34: sempre anche
+ * `patient` (25°, "Se puoi aspettare"), `typical` (mediana, "Richiesta tipica") e `sample`
+ * (prezzi per la barra della distribuzione).
+ * Con meno di 3 prezzi puliti nessun verdetto (il messaggio lo aggiunge il chiamante).
+ * Confidenza: alta con >= 15 prezzi e `fullMatch` (nessun mod tolto e gruppo not presente),
+ * media con >= 6, altrimenti bassa. Pessimo resta senza prezzo (decisione utente del Task 13).
+ */
 export function parityPriceFor(
   prices: number[],
   t: Settings['thresholds'],

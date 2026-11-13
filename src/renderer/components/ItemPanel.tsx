@@ -143,17 +143,27 @@ function ModList({ mods, pending = false }: { mods: DeepMod[]; pending?: boolean
           )
         }
         const d = m.deltaExalted
-        const neg = d !== undefined && d < 0
-        const width = d === undefined ? '0%' : `${Math.round((Math.abs(d) / maxDelta) * 100)}%`
+        if (d === undefined) {
+          return (
+            <li
+              key={key}
+              title="Contributo non calcolato: pochi oggetti simili o ricerche esaurite"
+            >
+              <ModText mod={m} />
+              <span className="bar" />
+              <span className="delta wait">n.d.</span>
+            </li>
+          )
+        }
+        const neg = d < 0
+        const width = `${Math.round((Math.abs(d) / maxDelta) * 100)}%`
         return (
           <li key={key}>
             <ModText mod={m} />
             <span className={neg ? 'bar neg' : 'bar'}>
               <span style={{ '--w': width } as CSSProperties} />
             </span>
-            <span className={neg ? 'delta neg' : 'delta pos'}>
-              {d === undefined ? '' : formatDelta(d)}
-            </span>
+            <span className={neg ? 'delta neg' : 'delta pos'}>{formatDelta(d)}</span>
           </li>
         )
       })}
