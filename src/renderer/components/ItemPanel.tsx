@@ -13,6 +13,7 @@ import {
   itemClassLabel,
   modStatusTitle,
   priceParts,
+  tierBand,
   uncertainText,
   verdictLabel
 } from '../format'
@@ -100,12 +101,17 @@ function Running({ state, onClose }: { state: PanelState; onClose: () => void })
   )
 }
 
-/** Testo di un affisso con il tier, se noto ("T3"). */
+/**
+ * Testo di un affisso con il tier a sinistra ("T3"), colorato in base al tier; senza tier un
+ * segnaposto vuoto tiene allineati i testi.
+ */
 function ModText({ mod }: { mod: DeepMod }): JSX.Element {
   return (
     <span className="mod">
-      {mod.text}
-      {mod.tier !== undefined && <span className="tier">T{mod.tier}</span>}
+      <span className={`tier ${tierBand(mod.tier)}`}>
+        {mod.tier !== undefined ? `T${mod.tier}` : ''}
+      </span>
+      <span className="txt">{mod.text}</span>
     </span>
   )
 }

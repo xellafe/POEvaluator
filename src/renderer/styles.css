@@ -574,7 +574,13 @@ kbd {
   font-size: 13.5px;
 }
 .contrib .mod {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   color: var(--mod);
+}
+.contrib .mod .txt {
+  min-width: 0;
 }
 .contrib .bar {
   position: relative;
@@ -613,11 +619,42 @@ kbd {
 .contrib li.pending .bar {
   animation: pulse 1.4s ease-in-out infinite;
 }
+/* tier a sinistra del testo, con una scala di colori dal T1 (oro) in giù */
 .contrib .tier {
-  margin-left: 6px;
+  flex: none;
+  width: 28px;
+  padding: 1px 0;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+.contrib .tier.t1 {
+  color: var(--c-eccellente);
+  background: rgba(244, 205, 85, 0.12);
+}
+.contrib .tier.t2 {
+  color: var(--c-ottimo);
+  background: rgba(88, 201, 149, 0.1);
+}
+.contrib .tier.t3 {
+  color: var(--c-buono);
+  background: rgba(120, 185, 224, 0.08);
+}
+.contrib .tier.tmid {
+  color: var(--c-neutral);
+  border-color: rgba(196, 185, 164, 0.4);
+}
+.contrib .tier.tlow {
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
+  border-color: rgba(179, 163, 133, 0.25);
+  opacity: 0.75;
+}
+.contrib .tier.tnone {
+  border-color: transparent;
 }
 .contrib li.dps .tag {
   grid-column: 2 / 4;
@@ -625,9 +662,19 @@ kbd {
   color: var(--muted);
   font-size: 12px;
 }
+/* esclusi: testo grigio e barrato, tier grigio ma non barrato */
 .contrib li.excluded .mod {
+  grid-column: 1 / -1;
   color: var(--muted);
+}
+.contrib li.excluded .mod .txt {
   text-decoration: line-through;
+}
+.contrib li.excluded .tier {
+  color: var(--muted);
+  background: none;
+  border-color: rgba(179, 163, 133, 0.3);
+  opacity: 0.7;
 }
 .contrib-note {
   margin-top: 6px;

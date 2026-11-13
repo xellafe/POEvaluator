@@ -205,6 +205,18 @@ export function distributionLayout(
   }
 }
 
+/**
+ * Fascia di colore del tier di un affisso (il tier 1 è il migliore): 1 oro, 2 verde, 3 azzurro,
+ * 4–5 neutro, da 6 in giù spento; senza tier nessuna fascia.
+ */
+export function tierBand(tier: number | undefined): 't1' | 't2' | 't3' | 'tmid' | 'tlow' | 'tnone' {
+  if (tier === undefined) return 'tnone'
+  if (tier <= 1) return 't1'
+  if (tier === 2) return 't2'
+  if (tier === 3) return 't3'
+  return tier <= 5 ? 'tmid' : 'tlow'
+}
+
 /** Tooltip di un affisso escluso dalla ricerca (R34); undefined per gli altri stati. */
 export function modStatusTitle(status: ModStatus): string | undefined {
   if (status === 'unweighted') return 'Non considerato: affisso di poco valore'

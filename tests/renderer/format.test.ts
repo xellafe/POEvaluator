@@ -8,6 +8,7 @@ import {
   priceParts,
   similarCount,
   formatRange,
+  tierBand,
   foundPrices,
   shortPrice,
   uncertainText,
@@ -67,6 +68,19 @@ describe('stima incerta', () => {
     expect(uncertainText(['solo 3 oggetti simili in vendita', 'confronto su 1 affisso su 4'])).toBe(
       'Solo 3 oggetti simili in vendita, confronto su 1 affisso su 4: il prezzo può variare molto'
     )
+  })
+})
+
+describe('tierBand', () => {
+  it('scala dal tier 1 (migliore) in giù', () => {
+    expect(tierBand(1)).toBe('t1')
+    expect(tierBand(2)).toBe('t2')
+    expect(tierBand(3)).toBe('t3')
+    expect(tierBand(4)).toBe('tmid')
+    expect(tierBand(5)).toBe('tmid')
+    expect(tierBand(6)).toBe('tlow')
+    expect(tierBand(12)).toBe('tlow')
+    expect(tierBand(undefined)).toBe('tnone')
   })
 })
 
