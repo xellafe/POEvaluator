@@ -212,47 +212,36 @@ function sampleP10(prices: number[]): number | null {
 }
 
 /**
- * Analisi approfondita con il confronto "alla pari" (R31, priorità user):
- * 1. ricerca base (parityPlan): mod utili ×0.8, DPS ×0.85, gruppo not, slot pieni, indexed,
- *    collapse; se total < 5: mod e DPS a ×0.6, poi via il mod di peso minore finché ne resta
- *    uno (il gruppo not e i vincoli sugli slot restano sempre);
- * 2. fetch di 20 risultati equidistanti fra i primi 60 (spreadSample), salvati nello store;
- *    prezzo consigliato al 10° percentile del campione (R32), verdetto dal prezzo
- *    (parityPriceFor); con meno di 3 prezzi nessun verdetto (R26);
- * 3. contributo di ogni mod della query finale: p10(base) - p10(senza il mod e con la sua stat
- *    nel not), su campioni equidistanti di 10 prezzi; nascosto se uno dei due ha meno di 3 prezzi;
- * 4. se il lato del mod più debole non ha slot liberi, confronto con oggetti alla pari che hanno
- *    uno slot libero su quel lato al posto di quel mod.
- * Ogni ricerca conta nel budget `maxSearches` (priorità 1 > 3 > 4); gli errori del client
- * vengono propagati (le inserzioni già recuperate restano salvate). Con `deps.signal` annullato
- * rigetta con AbortError al passo successivo, senza altri `onProgress`.
+ * Ricerche e fetch dell'analisi approfondita con budget, avanzamento e annullamento comuni:
+ * ogni chiamata a `search` conta nel budget e chiama `onProgress(fatte, total)`; i fetch
+ * salvano le inserzioni nello store.
  */
-export async function deepAnalysis(
+function tradeSession(
   item: RareItem,
+  plan: ParityPlan,
   deps: DeepDeps,
+  total: number,
   onProgress?: (done: number, total: number) => void
-): Promise<Valuation> {
+): {
+  search: (step: ParityStep) => Promise<SearchResult>
+  fetchPrices: (r: SearchResult, n: number) => Promise<number[]>
+  checkAborted: () => void
+  count: () => number
+} {
   const { client, store, settings, signal } = deps
+  const league = settings.league
+  const now = deps.now()
+  let searches = 0
   const checkAborted = (): void => {
     if (signal?.aborted) throw abortError()
   }
-  checkAborted()
-  const league = settings.league
-  const maxSearches = Math.max(1, deps.maxSearches ?? DEFAULT_MAX_SEARCHES)
-  const now = deps.now()
-  const plan = parityPlan(item)
-
-  let searches = 0
-  const budgetLeft = (): boolean => searches < maxSearches
-
   const search = async (step: ParityStep): Promise<SearchResult> => {
     const r = await client.search(league, parityQuery(item, plan, settings, step), 'user', signal)
     checkAborted()
     searches++
-    onProgress?.(searches, maxSearches)
+    onProgress?.(searches, total)
     return r
   }
-
   /** Recupera `n` risultati equidistanti, li salva e restituisce i prezzi in exalted. */
   const fetchPrices = async (r: SearchResult, n: number): Promise<number[]> => {
     if (r.total === 0 || r.result.length === 0) return []
@@ -264,6 +253,59 @@ export async function deepAnalysis(
     checkAborted()
     return listings.map((l) => l.priceExalted)
   }
+  return { search, fetchPrices, checkAborted, count: () => searches }
+}
+
+const budgetOf = (deps: DeepDeps): number => Math.max(1, deps.maxSearches ?? DEFAULT_MAX_SEARCHES)
+
+/**
+ * Controllo degli slot occupati (R31): il mod più debole dell'oggetto e il suo lato, se quel lato
+ * non ha slot liberi; null se il controllo non si applica.
+ */
+function openSlotCheck(item: RareItem): { weakest: ItemMod; side: 'prefix' | 'suffix' } | null {
+  const weakest = sortModsByWeight(item.explicits, weightsFor(item.itemClass) ?? {}).at(-1)
+  const side = weakest?.type === 'prefix' || weakest?.type === 'suffix' ? weakest.type : null
+  if (!weakest || !side) return null
+  const sideFull = side === 'prefix' ? item.openPrefixes === 0 : item.openSuffixes === 0
+  return sideFull ? { weakest, side } : null
+}
+
+/** Ricerche dei contributi: una per mod della query, più il controllo slot, entro il budget. */
+const plannedContributionSearches = (item: RareItem, modCount: number, budget: number): number =>
+  Math.min(budget, modCount + (openSlotCheck(item) ? 1 : 0))
+
+/**
+ * Analisi approfondita con il confronto "alla pari" (R31, priorità user):
+ * 1. ricerca base (parityPlan): mod utili ×0.8, DPS ×0.85, gruppo not, slot pieni, indexed,
+ *    collapse; se total < 5: mod e DPS a ×0.6, poi via il mod di peso minore finché ne resta
+ *    uno (il gruppo not e i vincoli sugli slot restano sempre);
+ * 2. fetch di 20 risultati equidistanti fra i primi 60 (spreadSample), salvati nello store;
+ *    prezzo consigliato al 10° percentile del campione (R32), verdetto dal prezzo
+ *    (parityPriceFor); con meno di 3 prezzi nessun verdetto (R26).
+ * I contributi degli affissi e il controllo degli slot liberi non partono qui (R37): con un
+ * verdetto e almeno un affisso usato il risultato porta `basis` e `contributions: 'available'`,
+ * e `deepContributions` li calcola su richiesta.
+ * Ogni ricerca conta nel budget `maxSearches`; gli errori del client vengono propagati (le
+ * inserzioni già recuperate restano salvate). Con `deps.signal` annullato rigetta con AbortError
+ * al passo successivo, senza altri `onProgress`.
+ */
+export async function deepAnalysis(
+  item: RareItem,
+  deps: DeepDeps,
+  onProgress?: (done: number, total: number) => void
+): Promise<Valuation> {
+  const { settings } = deps
+  const maxSearches = budgetOf(deps)
+  const plan = parityPlan(item)
+  const { search, fetchPrices, checkAborted, count } = tradeSession(
+    item,
+    plan,
+    deps,
+    maxSearches,
+    onProgress
+  )
+  checkAborted()
+  const budgetLeft = (): boolean => count() < maxSearches
 
   // 1. ricerca base con rilassamento (il gruppo not e gli slot non cambiano mai)
   let queryMods = plan.mods
@@ -290,8 +332,8 @@ export async function deepAnalysis(
   const result: Valuation = {
     ...priced,
     warnings: [...priced.warnings],
-    tradeUrl: tradeUrl(league, base.id),
-    searches
+    tradeUrl: tradeUrl(settings.league, base.id),
+    searches: count()
   }
   // stato degli affissi (R34): quelli tolti dal rilassamento sono "relaxed"
   const kept = new Set(queryMods.map((m) => m.statId))
@@ -302,41 +344,6 @@ export async function deepAnalysis(
     result.warnings = [priced.comparablesCount === 0 ? DEEP_NO_DATA_MESSAGE : DEEP_FEW_DATA_MESSAGE]
     return result
   }
-
-  const baseP10 = sampleP10(basePrices)
-  const deltas = new Map<string, number>()
-  if (baseP10 !== null) {
-    // 3. contributi: oggetti alla pari senza quell'affisso
-    for (const m of queryMods) {
-      if (!budgetLeft()) break
-      const r = await search({
-        ...current(),
-        mods: queryMods.filter((x) => x !== m),
-        extraExclude: [m.statId]
-      })
-      const p10 = sampleP10(await fetchPrices(r, SIDE_FETCH))
-      if (p10 === null) continue
-      const delta = baseP10 - p10
-      deltas.set(m.statId, Math.sign(delta) * roundPrice(Math.abs(delta)) || 0)
-    }
-
-    // 4. slot occupati: la stima resta sugli oggetti alla pari (stessi slot pieni)
-    const weakest = sortModsByWeight(item.explicits, weightsFor(item.itemClass) ?? {}).at(-1)
-    const side = weakest?.type === 'prefix' || weakest?.type === 'suffix' ? weakest.type : null
-    const sideFull = side === 'prefix' ? item.openPrefixes === 0 : item.openSuffixes === 0
-    if (weakest && side && sideFull && budgetLeft()) {
-      // il mod più debole esce dai mod (non va nel not): oggetti alla pari con uno slot libero al
-      // suo posto; tenerlo renderebbe la ricerca impossibile se il lato è tutto nella query
-      const r = await search({
-        ...current(),
-        mods: queryMods.filter((m) => m !== weakest),
-        openSlotSide: side
-      })
-      const openP10 = sampleP10(await fetchPrices(r, SIDE_FETCH))
-      if (openP10 !== null && openP10 > baseP10) result.warnings.push(openSlotsWarning(openP10))
-    }
-  }
-  result.searches = searches
 
   // stima incerta: pochi prezzi o confronto su meno di metà degli affissi
   const uncertain: string[] = []
@@ -351,9 +358,113 @@ export async function deepAnalysis(
     // metà degli affissi lo dice già la stima incerta
     result.warnings.push(partialModsWarning(queryMods.length, plan.mods.length))
   }
-  for (const m of result.mods) {
-    const d = deltas.get(m.statId)
-    if (d !== undefined && m.status === 'used') m.deltaExalted = d
+
+  // punto di ripresa per i contributi su richiesta (R37)
+  const baseP10 = sampleP10(basePrices)
+  if (baseP10 !== null && queryMods.length > 0) {
+    result.basis = {
+      queryMods: queryMods.map((m) => m.statId),
+      valueFactor,
+      dpsFactor,
+      baseP10,
+      plannedSearches: plannedContributionSearches(item, queryMods.length, maxSearches)
+    }
+    result.contributions = 'available'
   }
+  return result
+}
+
+/**
+ * Mod del piano corrispondenti agli statId della basis, nello stesso ordine (ogni statId prende
+ * il primo mod non ancora usato). Errore se l'oggetto non è quello dell'analisi.
+ */
+function resolveQueryMods(planMods: ItemMod[], statIds: string[]): ItemMod[] {
+  const used = new Set<ItemMod>()
+  return statIds.map((id) => {
+    const m = planMods.find((x) => x.statId === id && !used.has(x))
+    if (!m) throw new Error(`deepContributions: mod ${id} assente dal piano dell'oggetto`)
+    used.add(m)
+    return m
+  })
+}
+
+/**
+ * Contributi degli affissi su richiesta (R37): riprende l'analisi da `valuation.basis` senza
+ * ripetere la ricerca base.
+ * 3. contributo di ogni mod della query finale: p10(base) - p10(senza il mod e con la sua stat
+ *    nel not), su campioni equidistanti di 10 prezzi; nascosto se la variante ha meno di 3 prezzi;
+ * 4. se il lato del mod più debole non ha slot liberi, confronto con oggetti alla pari che hanno
+ *    uno slot libero su quel lato al posto di quel mod (avviso se valgono di più).
+ * Budget `maxSearches` separato da quello della base (priorità 3 > 4); `onProgress(fatte,
+ * previste)`. Restituisce una nuova Valuation (`searches` = base + contributi, `contributions:
+ * 'done'`, senza `basis`); stessi errori, annullamento e salvataggio di `deepAnalysis`.
+ */
+export async function deepContributions(
+  item: RareItem,
+  valuation: Valuation,
+  deps: DeepDeps,
+  onProgress?: (done: number, total: number) => void
+): Promise<Valuation> {
+  const basis = valuation.basis
+  if (!basis) throw new Error('deepContributions: valutazione senza basis')
+  const maxSearches = budgetOf(deps)
+  const plan = parityPlan(item)
+  const queryMods = resolveQueryMods(plan.mods, basis.queryMods)
+  const { search, fetchPrices, checkAborted, count } = tradeSession(
+    item,
+    plan,
+    deps,
+    plannedContributionSearches(item, queryMods.length, maxSearches),
+    onProgress
+  )
+  checkAborted()
+  const budgetLeft = (): boolean => count() < maxSearches
+  const current = (): ParityStep => ({
+    mods: queryMods,
+    valueFactor: basis.valueFactor,
+    dpsFactor: basis.dpsFactor
+  })
+  const warnings = [...valuation.warnings]
+
+  // 3. contributi: oggetti alla pari senza quell'affisso
+  const deltas = new Map<string, number>()
+  for (const m of queryMods) {
+    if (!budgetLeft()) break
+    const r = await search({
+      ...current(),
+      mods: queryMods.filter((x) => x !== m),
+      extraExclude: [m.statId]
+    })
+    const p10 = sampleP10(await fetchPrices(r, SIDE_FETCH))
+    if (p10 === null) continue
+    const delta = basis.baseP10 - p10
+    deltas.set(m.statId, Math.sign(delta) * roundPrice(Math.abs(delta)) || 0)
+  }
+
+  // 4. slot occupati: la stima resta sugli oggetti alla pari (stessi slot pieni)
+  const slot = openSlotCheck(item)
+  if (slot && budgetLeft()) {
+    // il mod più debole esce dai mod (non va nel not): oggetti alla pari con uno slot libero al
+    // suo posto; tenerlo renderebbe la ricerca impossibile se il lato è tutto nella query
+    const r = await search({
+      ...current(),
+      mods: queryMods.filter((m) => m !== slot.weakest),
+      openSlotSide: slot.side
+    })
+    const openP10 = sampleP10(await fetchPrices(r, SIDE_FETCH))
+    if (openP10 !== null && openP10 > basis.baseP10) warnings.push(openSlotsWarning(openP10))
+  }
+
+  const result: Valuation = {
+    ...valuation,
+    warnings,
+    searches: (valuation.searches ?? 0) + count(),
+    contributions: 'done',
+    mods: valuation.mods?.map((m) => {
+      const d = deltas.get(m.statId)
+      return d !== undefined && m.status === 'used' ? { ...m, deltaExalted: d } : { ...m }
+    })
+  }
+  delete result.basis
   return result
 }

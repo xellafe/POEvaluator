@@ -9,6 +9,7 @@ import { EMPTY_PREFIX_STAT_ID, EMPTY_SUFFIX_STAT_ID } from '../../src/core/trade
 import type { ItemMod, RareItem, Valuation } from '../../src/core/types'
 import {
   deepAnalysis,
+  deepContributions,
   LOCAL_DAMAGE_STATS,
   parityPlan,
   spreadSample,
@@ -195,6 +196,16 @@ function contributionsOf(
     .filter((m) => m.deltaExalted !== undefined)
     .map((m) => ({ statId: m.statId, text: m.text, deltaExalted: m.deltaExalted as number }))
   return out.length > 0 ? out : undefined
+}
+
+/** Analisi approfondita seguita dai contributi (se calcolabili), come quando l'utente li chiede. */
+async function fullAnalysis(
+  item: RareItem,
+  d: DeepDeps,
+  onProgress?: (done: number, total: number) => void
+): Promise<Valuation> {
+  const base = await deepAnalysis(item, d, onProgress)
+  return base.basis ? deepContributions(item, base, d, onProgress) : base
 }
 
 const fixtureItem = (name: string): RareItem => {
@@ -447,19 +458,26 @@ describe('deepAnalysis', () => {
     expect(modIdsOf(searches[0])).toEqual([MOVE])
   })
 
-  it('non supera mai maxSearches chiamate a search', async () => {
+  it('non supera mai maxSearches chiamate a search (base e contributi con budget separati)', async () => {
+    // la base non trova abbastanza oggetti: il rilassamento si ferma al budget
+    for (const maxSearches of [1, 3]) {
+      const { client, searches } = fakeClient(() => ({ total: 1, prices: [10] }))
+      await deepAnalysis(boots(fourMods()), deps(client, { maxSearches }))
+      expect(searches.length).toBe(maxSearches)
+    }
     const respond = (): Response => ({ total: 30, prices: range(20, (i) => 10 + i) })
-    for (const maxSearches of [1, 3, 5]) {
+    for (const maxSearches of [1, 3]) {
       const { client, searches } = fakeClient(respond)
-      await deepAnalysis(
+      await fullAnalysis(
         boots(fourMods(), { openPrefixes: 0, openSuffixes: 0 }),
         deps(client, { maxSearches })
       )
-      expect(searches.length).toBe(maxSearches)
+      // 1 ricerca base + maxSearches ricerche dei contributi
+      expect(searches.length).toBe(1 + maxSearches)
     }
     const { client, searches } = fakeClient(respond)
-    await deepAnalysis(boots(fourMods(), { openPrefixes: 0, openSuffixes: 0 }), deps(client))
-    // base + 4 contributi + slot liberi = 6 <= 8
+    await fullAnalysis(boots(fourMods(), { openPrefixes: 0, openSuffixes: 0 }), deps(client))
+    // base + 4 contributi + slot liberi = 6
     expect(searches.length).toBe(6)
   })
 
@@ -470,7 +488,7 @@ describe('deepAnalysis', () => {
       if (modIdsOf(q).includes(MOVE)) return { total: 0, prices: [] }
       return { total: 25, prices: range(25, () => 30) }
     })
-    await deepAnalysis(boots(fourMods()), deps(client))
+    await fullAnalysis(boots(fourMods()), deps(client))
     expect(fetches[0].queryId).toBe('q1')
     expect(fetches[0].ids).toHaveLength(20)
     // solo la ricerca senza MOVE ha risultati
@@ -495,7 +513,7 @@ describe('deepAnalysis', () => {
         ? { total: 500, prices: range(100, (i) => 10 + i) }
         : { total: 500, prices: range(100, (i) => 5 + i) }
     )
-    await deepAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client, { maxSearches: 2 }))
+    await fullAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client, { maxSearches: 2 }))
     const base = fetches[0].ids.map((id) => Number(id.split('-')[1]))
     expect(base).toHaveLength(20)
     expect(base[0]).toBe(0)
@@ -510,7 +528,7 @@ describe('deepAnalysis', () => {
 
   it('salva nello store le inserzioni recuperate', async () => {
     const { client } = fakeClient(() => ({ total: 12, prices: range(12, (i) => 10 + i) }))
-    await deepAnalysis(boots(fourMods()), deps(client, { maxSearches: 2 }))
+    await fullAnalysis(boots(fourMods()), deps(client, { maxSearches: 1 }))
     const saved = store.comparables({
       league: 'Standard',
       itemClass: 'armour.boots',
@@ -532,7 +550,7 @@ describe('deepAnalysis', () => {
       if (!ids.includes(LIFE)) return { total: 12, prices: range(12, () => 100) }
       return { total: 12, prices: range(12, () => 120) }
     })
-    const v = await deepAnalysis(boots(mods), deps(client))
+    const v = await fullAnalysis(boots(mods), deps(client))
     expect(contributionsOf(v)).toEqual([
       { statId: MOVE, text: `text ${MOVE}`, deltaExalted: 60 },
       { statId: LIFE, text: `text ${LIFE}`, deltaExalted: 0 },
@@ -555,7 +573,7 @@ describe('deepAnalysis', () => {
       if (!ids.includes(MOVE)) return { total: 2, prices: [10, 20] }
       return { total: 12, prices: range(12, () => 70) }
     })
-    const v = await deepAnalysis(boots(mods), deps(client))
+    const v = await fullAnalysis(boots(mods), deps(client))
     expect(contributionsOf(v)).toEqual([{ statId: LIFE, text: `text ${LIFE}`, deltaExalted: 30 }])
   })
 
@@ -571,6 +589,8 @@ describe('deepAnalysis', () => {
     expect(v.price).toBeUndefined()
     expect(v.confidence).toBe('bassa')
     expect(contributionsOf(v)).toBeUndefined()
+    expect(v.basis).toBeUndefined()
+    expect(v.contributions).toBeUndefined()
     expect(v.warnings).toEqual(['Troppo pochi oggetti simili in vendita per una stima'])
   })
 
@@ -590,7 +610,7 @@ describe('deepAnalysis', () => {
       if (openSlotSearch(q)) return { total: 12, prices: range(12, () => 150) }
       return { total: 12, prices: range(12, () => 100) }
     })
-    const v = await deepAnalysis(boots(mods, { openPrefixes: 0, openSuffixes: 0 }), deps(client))
+    const v = await fullAnalysis(boots(mods, { openPrefixes: 0, openSuffixes: 0 }), deps(client))
     const last = searches[searches.length - 1]
     // mod più debole: FIRE_RES (0.5), suffix: oggetti alla pari con uno slot libero al suo
     // posto (FIRE_RES tolto dai mod ma non messo nel not)
@@ -611,7 +631,7 @@ describe('deepAnalysis', () => {
       if (openSlotSearch(q)) return { total: 12, prices: range(12, () => 50) }
       return { total: 12, prices: range(12, () => 100) }
     })
-    const v = await deepAnalysis(boots(mods, { openPrefixes: 0, openSuffixes: 0 }), deps(client))
+    const v = await fullAnalysis(boots(mods, { openPrefixes: 0, openSuffixes: 0 }), deps(client))
     const last = searches[searches.length - 1]
     expect(pseudoOf(last)).toEqual([{ id: EMPTY_PREFIX_STAT_ID, value: { min: 1 } }])
     expect(fullSlotsOf(last)).toEqual([EMPTY_SUFFIX_STAT_ID])
@@ -623,7 +643,7 @@ describe('deepAnalysis', () => {
 
   it('niente ricerca slot liberi se il lato del mod più debole ha slot liberi', async () => {
     const { client, searches } = fakeClient(() => ({ total: 12, prices: range(12, () => 100) }))
-    await deepAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))
+    await fullAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))
     expect(searches.every((q) => !openSlotSearch(q))).toBe(true)
     expect(searches.length).toBe(3)
   })
@@ -632,7 +652,7 @@ describe('deepAnalysis', () => {
     // stessa distribuzione con e senza il mod: 10, 15, ..., 105 (fetch base 20, altre 10);
     // il contributo confronta 10 prezzi equidistanti della base con i 10 della variante
     const { client } = fakeClient(() => ({ total: 20, prices: range(20, (i) => 10 + i * 5) }))
-    const v = await deepAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))
+    const v = await fullAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))
     expect(contributionsOf(v)).toEqual([
       { statId: MOVE, text: `text ${MOVE}`, deltaExalted: 0 },
       { statId: LIFE, text: `text ${LIFE}`, deltaExalted: 0 }
@@ -650,7 +670,7 @@ describe('deepAnalysis', () => {
         ? { total: 20, prices: range(20, (i) => 70 + i * 2) }
         : { total: 20, prices: range(20, (i) => 10 + i * 10) }
     )
-    const v = await deepAnalysis(
+    const v = await fullAnalysis(
       boots([mod(MOVE, 25, 'prefix'), mod(FIRE_RES, 30, 'suffix')], {
         openPrefixes: 0,
         openSuffixes: 0
@@ -669,7 +689,7 @@ describe('deepAnalysis', () => {
       if (n === 1) return { total: 12, prices: range(12, () => 100) }
       return { total: 12, prices: range(12, () => 60) }
     })
-    const v = await deepAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))
+    const v = await fullAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))
     expect(searches.map((q) => modIdsOf(q))).toEqual([[MOVE, LIFE], [MOVE, LIFE], [MOVE], []])
     expect(notIdsOf(searches[3])).toEqual([...notIdsOf(searches[2]), MOVE])
     expect(contributionsOf(v)).toEqual([{ statId: MOVE, text: `text ${MOVE}`, deltaExalted: 40 }])
@@ -677,7 +697,9 @@ describe('deepAnalysis', () => {
   })
 
   it('onProgress: total === maxSearches, una chiamata per ricerca; searches = ricerche eseguite', async () => {
-    const { client } = fakeClient(() => ({ total: 12, prices: range(12, () => 100) }))
+    const { client } = fakeClient((_q, call) =>
+      call === 1 ? { total: 2, prices: [10, 20] } : { total: 12, prices: range(12, () => 100) }
+    )
     const calls: [number, number][] = []
     const v = await deepAnalysis(
       boots([mod(MOVE, 25), mod(LIFE, 80)]),
@@ -686,10 +708,9 @@ describe('deepAnalysis', () => {
     )
     expect(calls).toEqual([
       [1, 6],
-      [2, 6],
-      [3, 6]
+      [2, 6]
     ])
-    expect(v.searches).toBe(3)
+    expect(v.searches).toBe(2)
   })
 
   it('nessun risultato: nessun verdetto (dati insufficienti) e messaggio della deep', async () => {
@@ -818,7 +839,7 @@ describe('deepAnalysis', () => {
       if (++calls === 2) throw err
       return search(...args)
     }) as TradeClient['search']
-    await expect(deepAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))).rejects.toBe(
+    await expect(fullAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))).rejects.toBe(
       err
     )
     expect(store.countByClass('Standard')['armour.boots']).toBe(12)
@@ -888,7 +909,7 @@ describe('deepAnalysis: annullamento', () => {
       if (call === 2) ac.abort()
       return { total: 12, prices: range(12, () => 50) }
     })
-    const err = await deepAnalysis(boots(fourMods()), deps(client, { signal: ac.signal })).catch(
+    const err = await fullAnalysis(boots(fourMods()), deps(client, { signal: ac.signal })).catch(
       (e) => e
     )
     expect(isAbortError(err)).toBe(true)
@@ -931,7 +952,7 @@ describe('deepAnalysis: stato degli affissi (R34)', () => {
         ? { total: 2, prices: [10, 20] }
         : { total: 12, prices: range(12, () => 50) }
     )
-    const v = await deepAnalysis(boots(mods), deps(client))
+    const v = await fullAnalysis(boots(mods), deps(client))
     expect(v.mods?.map((m) => [m.statId, m.status, m.tier])).toEqual([
       [DEX, 'relaxed', 6],
       [LIFE, 'used', 2],
@@ -948,5 +969,167 @@ describe('deepAnalysis: stato degli affissi (R34)', () => {
     const v = await deepAnalysis(boots([mod(MOVE, 25)]), deps(client))
     expect(v.verdict).toBeNull()
     expect(v.mods?.map((m) => m.status)).toEqual(['used'])
+  })
+})
+
+describe('contributi su richiesta (R37)', () => {
+  it('deepAnalysis fa solo base e prezzi: niente contributi né slot liberi, basis per riprendere', async () => {
+    const { client, searches } = fakeClient(() => ({ total: 30, prices: range(20, () => 100) }))
+    const v = await deepAnalysis(
+      boots(fourMods(), { openPrefixes: 0, openSuffixes: 0 }),
+      deps(client)
+    )
+    expect(searches).toHaveLength(1)
+    expect(v.searches).toBe(1)
+    expect(v.verdict).not.toBeNull()
+    expect(contributionsOf(v)).toBeUndefined()
+    expect(v.warnings.some((w) => w.includes('slot libero'))).toBe(false)
+    expect(v.contributions).toBe('available')
+    expect(v.basis).toEqual({
+      queryMods: [MOVE, LIFE, FIRE_RES, DEX],
+      valueFactor: 0.8,
+      dpsFactor: 0.85,
+      baseP10: 100,
+      plannedSearches: 5
+    })
+  })
+
+  it('basis dopo il rilassamento: fattori a ×0.6 e solo i mod rimasti', async () => {
+    const { client } = fakeClient((q) =>
+      modIdsOf(q).length >= 4
+        ? { total: 2, prices: [10, 20] }
+        : { total: 12, prices: range(12, () => 50) }
+    )
+    const v = await deepAnalysis(boots(fourMods()), deps(client))
+    expect(v.basis).toMatchObject({
+      queryMods: [MOVE, LIFE, FIRE_RES],
+      valueFactor: 0.6,
+      dpsFactor: 0.6,
+      plannedSearches: 3
+    })
+  })
+
+  it('senza mod usati nessuna basis (i contributi non sono calcolabili)', async () => {
+    const item = fixtureItem('rare-quarterstaff.txt')
+    const { client } = fakeClient(() => ({ total: 12, prices: range(12, () => 50) }))
+    const v = await deepAnalysis(item, deps(client))
+    expect(v.verdict).not.toBeNull()
+    expect(v.basis).toBeUndefined()
+    expect(v.contributions).toBeUndefined()
+  })
+
+  it('deepContributions: nuova Valuation con delta, ricerche sommate e contributions done', async () => {
+    const mods = [mod(MOVE, 25, 'prefix'), mod(LIFE, 80, 'prefix'), mod(FIRE_RES, 30, 'suffix')]
+    const { client, searches } = fakeClient((q) => {
+      const ids = modIdsOf(q)
+      if (ids.length === 3) return { total: 12, prices: range(12, () => 100) }
+      if (!ids.includes(MOVE)) return { total: 12, prices: range(12, () => 40) }
+      return { total: 12, prices: range(12, () => 100) }
+    })
+    const item = boots(mods)
+    const base = await deepAnalysis(item, deps(client))
+    const snapshot = structuredClone(base)
+    const v = await deepContributions(item, base, deps(client))
+    expect(base).toEqual(snapshot) // l'originale non cambia
+    expect(searches).toHaveLength(4)
+    expect(v.searches).toBe(4)
+    expect(v.contributions).toBe('done')
+    expect(v.basis).toBeUndefined()
+    expect(contributionsOf(v)?.map((c) => [c.statId, c.deltaExalted])).toEqual([
+      [MOVE, 60],
+      [LIFE, 0],
+      [FIRE_RES, 0]
+    ])
+    expect(v.price).toEqual(base.price)
+    expect(v.verdict).toBe(base.verdict)
+  })
+
+  it('basis serializzata (JSON, come sull IPC): stesse query dei contributi', async () => {
+    const respond = (): Response => ({ total: 30, prices: range(20, (i) => 50 + i) })
+    const item = boots(fourMods(), { openPrefixes: 0, openSuffixes: 0 })
+    const a = fakeClient(respond)
+    const va = await fullAnalysis(item, deps(a.client))
+    const b = fakeClient(respond)
+    const base = await deepAnalysis(item, deps(b.client))
+    const vb = await deepContributions(
+      item,
+      JSON.parse(JSON.stringify(base)) as Valuation,
+      deps(b.client)
+    )
+    expect(b.searches).toEqual(a.searches)
+    expect(vb).toEqual(va)
+  })
+
+  it('onProgress dei contributi: total = mod della query + controllo slot, entro il budget', async () => {
+    const respond = (): Response => ({ total: 30, prices: range(20, () => 100) })
+    const item = boots(fourMods(), { openPrefixes: 0, openSuffixes: 0 })
+    const { client } = fakeClient(respond)
+    const base = await deepAnalysis(item, deps(client))
+    const calls: [number, number][] = []
+    await deepContributions(item, base, deps(client), (d, t) => calls.push([d, t]))
+    expect(calls).toEqual(Array.from({ length: 5 }, (_, i) => [i + 1, 5]))
+
+    const small = fakeClient(respond)
+    const base2 = await deepAnalysis(item, deps(small.client))
+    const calls2: [number, number][] = []
+    await deepContributions(item, base2, deps(small.client, { maxSearches: 2 }), (d, t) =>
+      calls2.push([d, t])
+    )
+    expect(calls2).toEqual([
+      [1, 2],
+      [2, 2]
+    ])
+  })
+
+  it('avviso degli slot liberi aggiunto agli avvisi esistenti', async () => {
+    const mods = [mod(MOVE, 25, 'prefix'), mod(FIRE_RES, 30, 'suffix'), mod(LIFE, 80, 'prefix')]
+    const { client } = fakeClient((q) =>
+      openSlotSearch(q)
+        ? { total: 12, prices: range(12, () => 150) }
+        : { total: 12, prices: range(12, () => 100) }
+    )
+    const item = boots(mods, { openPrefixes: 0, openSuffixes: 0 })
+    const base = await deepAnalysis(item, deps(client))
+    const v = await deepContributions(item, base, deps(client))
+    expect(v.warnings).toEqual([
+      ...base.warnings,
+      'Gli oggetti simili con uno slot libero si vendono intorno a 150 ex'
+    ])
+  })
+
+  it('valutazione senza basis: errore', async () => {
+    const { client } = fakeClient(() => ({ total: 0, prices: [] }))
+    const item = boots([mod(MOVE, 25)])
+    const base = await deepAnalysis(item, deps(client))
+    await expect(deepContributions(item, base, deps(client))).rejects.toThrow()
+  })
+
+  it('annullamento: AbortError, nessuna ricerca dopo, inserzioni già scaricate salvate', async () => {
+    const respond = (): Response => ({ total: 12, prices: range(12, () => 100) })
+    const item = boots([mod(MOVE, 25), mod(LIFE, 80)])
+    const { client, searches } = fakeClient(respond)
+    const base = await deepAnalysis(item, deps(client))
+    const pre = new AbortController()
+    pre.abort()
+    const e1 = await deepContributions(item, base, deps(client, { signal: pre.signal })).catch(
+      (e) => e
+    )
+    expect(isAbortError(e1)).toBe(true)
+    expect(searches).toHaveLength(1)
+
+    const ac = new AbortController()
+    const fetchListings = client.fetchListings.bind(client)
+    client.fetchListings = (async (...a: Parameters<TradeClient['fetchListings']>) => {
+      const r = await fetchListings(...a)
+      if (a[1] === 'q2') ac.abort()
+      return r
+    }) as TradeClient['fetchListings']
+    const e2 = await deepContributions(item, base, deps(client, { signal: ac.signal })).catch(
+      (e) => e
+    )
+    expect(isAbortError(e2)).toBe(true)
+    expect(searches).toHaveLength(2)
+    // base (12) + primo contributo (10)
+    expect(store.countByClass('Standard')['armour.boots']).toBe(22)
   })
 })

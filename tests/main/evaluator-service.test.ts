@@ -401,3 +401,84 @@ describe('EvaluatorService tassi', () => {
     s.stop()
   })
 })
+
+describe('EvaluatorService.contributions (R37)', () => {
+  it('la deep lascia i contributi su richiesta; contributions li calcola e aggiorna la cache', async () => {
+    const s = await withRates()
+    const first = await s.deep(rareBoots, () => {})
+    expect(first?.ok && first.valuation.contributions).toBe('available')
+    if (!first?.ok) return
+    const searches = client.searches
+    const progress: [number, number][] = []
+    const r = await s.contributions(rareBoots, (d, t) => progress.push([d, t]))
+    expect(r?.ok).toBe(true)
+    if (!r?.ok) return
+    expect(r.valuation.contributions).toBe('done')
+    expect(r.valuation.basis).toBeUndefined()
+    expect(client.searches).toBeGreaterThan(searches)
+    expect(r.valuation.searches).toBe(first.valuation.searches! + client.searches - searches)
+    expect(progress.length).toBe(client.searches - searches)
+    // la deep successiva risponde dalla cache con i contributi
+    const calls = client.searches
+    const again = await s.deep(rareBoots, () => {})
+    expect(client.searches).toBe(calls)
+    expect(again?.ok && again.valuation).toEqual({ ...r.valuation, cachedAt: NOW.toISOString() })
+    // contributi già calcolati: nessuna nuova ricerca
+    const done = await s.contributions(rareBoots, () => {})
+    expect(done?.ok && done.valuation.contributions).toBe('done')
+    expect(client.searches).toBe(calls)
+    s.stop()
+  })
+
+  it('analisi non in cache: errore "analisi scaduta" senza richieste', async () => {
+    const s = await withRates()
+    expect(await s.contributions(rareBoots, () => {})).toEqual({
+      ok: false,
+      ...MESSAGES.expired
+    })
+    expect(MESSAGES.expired).toEqual({
+      title: 'Analisi scaduta',
+      message: "Ripeti l'analisi approfondita per calcolare il contributo degli affissi"
+    })
+    expect(client.searches).toBe(0)
+    s.stop()
+  })
+
+  it('testo non valido: messaggio del parser', async () => {
+    const s = await withRates()
+    expect(await s.contributions('', () => {})).toEqual({ ok: false, ...MESSAGES.empty })
+    s.stop()
+  })
+
+  it('trade in pausa: errore immediato, la cache resta da calcolare', async () => {
+    const s = await withRates()
+    await s.deep(rareBoots, () => {})
+    const searches = client.searches
+    client.blocked = 90_000
+    const r = await s.contributions(rareBoots, () => {})
+    expect(r).toEqual({
+      ok: false,
+      title: 'Trade in pausa',
+      message: 'Il sito del trade ha limitato le richieste: riprova tra 90 s'
+    })
+    expect(client.searches).toBe(searches)
+    s.stop()
+  })
+
+  it('errore del trade o annullamento: la cache resta con i contributi da calcolare', async () => {
+    const s = await withRates()
+    await s.deep(rareBoots, () => {})
+    client.fail = true
+    expect(await s.contributions(rareBoots, () => {})).toEqual({
+      ok: false,
+      ...MESSAGES.tradeError
+    })
+    client.fail = false
+    const ac = new AbortController()
+    ac.abort()
+    expect(await s.contributions(rareBoots, () => {}, ac.signal)).toBeNull()
+    const cached = await s.deep(rareBoots, () => {})
+    expect(cached?.ok && cached.valuation.contributions).toBe('available')
+    s.stop()
+  })
+})

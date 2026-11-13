@@ -6,7 +6,7 @@ import { makeConverter, type CurrencyRates } from '../core/pricing/currency'
 import type { Settings } from '../core/settings'
 import { isAbortError, type TradeClient } from '../core/trade/trade-client'
 import type { ParseResult, Valuation } from '../core/types'
-import { deepAnalysis } from '../core/valuation/deep-analysis'
+import { deepAnalysis, deepContributions } from '../core/valuation/deep-analysis'
 import { quickEvaluate } from '../core/valuation/quick-evaluator'
 import { DeepCache } from './deep-cache'
 
@@ -17,7 +17,7 @@ type FailReason = Extract<ParseResult, { ok: false }>['reason']
 const CANNOT = 'Impossibile valutare'
 const UNSUPPORTED = 'Oggetto non supportato'
 
-export const MESSAGES: Record<FailReason | 'tradeError' | 'noRates', EvalError> = {
+export const MESSAGES: Record<FailReason | 'tradeError' | 'noRates' | 'expired', EvalError> = {
   empty: {
     title: CANNOT,
     message: 'Nessun oggetto trovato: tieni il mouse sopra un oggetto e riprova'
@@ -40,6 +40,11 @@ export const MESSAGES: Record<FailReason | 'tradeError' | 'noRates', EvalError> 
   noRates: {
     title: CANNOT,
     message: 'Tassi di cambio non ancora disponibili: riprova tra poco'
+  },
+  /** Contributi chiesti per un'analisi non più in cache (scaduta o di un'altra league). */
+  expired: {
+    title: 'Analisi scaduta',
+    message: "Ripeti l'analisi approfondita per calcolare il contributo degli affissi"
   }
 }
 
@@ -196,6 +201,50 @@ export class EvaluatorService {
     } catch (e) {
       if (isAbortError(e) || signal?.aborted) return null
       this.deps.log?.(`analisi approfondita fallita: ${errMsg(e)}`)
+      return { ok: false, ...MESSAGES.tradeError }
+    }
+  }
+
+  /**
+   * Contributi degli affissi su richiesta (R37) per l'analisi approfondita in cache di `text`:
+   * riprende da `basis` senza ripetere la ricerca base e aggiorna la cache (stesso istante
+   * dell'analisi: i contributi non ne allungano la validità). Analisi assente o senza `basis`:
+   * errore "Analisi scaduta"; contributi già calcolati: il risultato in cache, senza richieste.
+   * Con `signal` annullato restituisce null e la cache resta com'era.
+   */
+  async contributions(
+    text: string,
+    onProgress: (done: number, total: number) => void,
+    signal?: AbortSignal
+  ): Promise<EvalResult | null> {
+    const parsed = parseItemText(text)
+    if (!parsed.ok) return { ok: false, ...MESSAGES[parsed.reason] }
+    const cached = this.cachedDeep(text)
+    if (cached?.valuation.contributions === 'done') {
+      return {
+        ok: true,
+        item: parsed.item,
+        valuation: { ...cached.valuation, cachedAt: cached.at.toISOString() }
+      }
+    }
+    if (!cached?.valuation.basis) return { ok: false, ...MESSAGES.expired }
+    const unavailable = this.deepUnavailable()
+    if (unavailable) return { ok: false, ...unavailable }
+    const { client, store, settings, now } = this.deps
+    const league = settings().league
+    try {
+      const valuation = await deepContributions(
+        parsed.item,
+        cached.valuation,
+        { client, store, toExalted: this.toExalted, settings: settings(), now, signal },
+        onProgress
+      )
+      if (signal?.aborted) return null
+      this.deepCache.set(league, text, valuation, cached.at)
+      return { ok: true, item: parsed.item, valuation }
+    } catch (e) {
+      if (isAbortError(e) || signal?.aborted) return null
+      this.deps.log?.(`contributi degli affissi falliti: ${errMsg(e)}`)
       return { ok: false, ...MESSAGES.tradeError }
     }
   }

@@ -143,5 +143,29 @@ export interface Valuation {
   searches?: number
   /** Istante (ISO) dell'analisi approfondita restituita dalla cache; assente se appena eseguita. */
   cachedAt?: string
+  /**
+   * Solo deep (R37): stato dei contributi degli affissi, calcolati su richiesta. `available`:
+   * calcolabili (c'è `basis`) e non ancora calcolati; `done`: calcolati. Assente se non
+   * calcolabili (nessun verdetto, nessun affisso usato) o in analisi salvate prima di R37.
+   */
+  contributions?: 'available' | 'done'
+  /** Solo deep con `contributions: 'available'`: quanto serve a riprendere l'analisi (R37). */
+  basis?: DeepBasis
   warnings: string[]
+}
+
+/**
+ * Punto di ripresa dell'analisi approfondita per i contributi (R37): rifà le query dei contributi
+ * senza ripetere la ricerca base. Solo dati serializzabili (viaggia sull'IPC).
+ */
+export interface DeepBasis {
+  /** statId dei mod della query finale, nell'ordine del piano (peso decrescente). */
+  queryMods: string[]
+  /** Fattori di mod e DPS della query finale (0.8/0.85, o 0.6 dopo il rilassamento). */
+  valueFactor: number
+  dpsFactor: number
+  /** 10° percentile del campione base (10 prezzi equidistanti, puliti). */
+  baseP10: number
+  /** Ricerche previste per i contributi: mod della query + controllo slot, entro il budget. */
+  plannedSearches: number
 }
