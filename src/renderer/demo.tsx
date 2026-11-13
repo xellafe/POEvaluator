@@ -9,12 +9,16 @@ import { ItemPanel, type PanelState } from './components/ItemPanel'
 import { SettingsWindow } from './components/SettingsWindow'
 import { VerdictBadge, type BadgeState } from './components/VerdictBadge'
 
-const mod = (text: string, i: number): RareItem['explicits'][number] => ({
-  statId: `explicit.stat_${i}`,
+type DemoMod = RareItem['explicits'][number]
+
+/** Affisso di esempio con id trade reale (lo stato nel pannello dipende dai pesi della classe). */
+const mod = (statId: string, text: string, type: DemoMod['type'], tier?: number): DemoMod => ({
+  statId: `explicit.stat_${statId}`,
   text,
   values: [],
   tradeValue: 1,
-  type: i % 2 ? 'suffix' : 'prefix'
+  type,
+  ...(tier !== undefined ? { tier } : {})
 })
 
 const ITEM: RareItem = {
@@ -26,17 +30,40 @@ const ITEM: RareItem = {
   quality: 0,
   corrupted: false,
   explicits: [
-    '30% increased Movement Speed',
-    '+74 to maximum Life',
-    '+38% to Cold Resistance',
-    '+12 to Dexterity'
-  ].map(mod),
+    mod('2250533757', '30% increased Movement Speed', 'prefix', 1),
+    mod('3299347043', '+74 to maximum Life', 'prefix', 6),
+    mod('1368271171', 'Gain 3 Mana per enemy killed', 'prefix', 8),
+    mod('4220027924', '+38% to Cold Resistance', 'suffix', 3),
+    mod('3261801346', '+12 to Dexterity', 'suffix', 7)
+  ],
   implicits: [],
   openPrefixes: 0,
   openSuffixes: 0
 }
 
 const RATE = 250
+
+/** Arma d'attacco: i danni locali sono nel DPS, gli affissi senza peso sono esclusi. */
+const WEAPON: RareItem = {
+  raw: '',
+  itemClass: 'weapon.warstaff',
+  baseType: 'Hefty Quarterstaff',
+  name: 'Blood Beam',
+  itemLevel: 70,
+  quality: 0,
+  corrupted: false,
+  explicits: [
+    mod('691932474', '+273 to Accuracy Rating · +105 to Accuracy Rating', 'prefix', 3),
+    mod('1037193709', 'Adds 54 to 82 Cold Damage', 'prefix', 4),
+    mod('1509134228', '51% increased Physical Damage', 'prefix', 4),
+    mod('791928121', 'Causes 50% increased Stun Buildup', 'suffix', 4),
+    mod('1368271171', 'Gain 3 Mana per enemy killed', 'suffix', 8)
+  ],
+  implicits: [],
+  openPrefixes: 0,
+  openSuffixes: 1,
+  weapon: { pdps: 117.7, edps: 88.4, aps: 1.3, critChance: 10 }
+}
 
 const v = (p: Partial<Valuation>): Valuation => ({
   verdict: 'buono',
@@ -169,7 +196,7 @@ const PANELS: [string, PanelState][] = [
     }
   ],
   [
-    'Analisi completata',
+    'Analisi completata · usati ed esclusi',
     {
       item: ITEM,
       quick: QUICK,
@@ -178,17 +205,122 @@ const PANELS: [string, PanelState][] = [
       result: v({
         verdict: 'ottimo',
         confidence: 'alta',
-        price: { suggested: 280, min: 220, max: 340, patient: 360 },
-        comparablesCount: 23,
+        price: {
+          suggested: 280,
+          min: 255,
+          max: 420,
+          patient: 330,
+          typical: 420,
+          sample: [250, 265, 280, 290, 300, 320, 340, 360, 380, 420, 460, 520, 600, 750, 900, 1200]
+        },
+        comparablesCount: 16,
         tradeUrl: 'https://www.pathofexile.com/trade2/search/poe2/Standard/abc',
         searches: 5,
-        contributions: [
-          { statId: 'a', text: '30% increased Movement Speed', deltaExalted: 118 },
-          { statId: 'b', text: '+74 to maximum Life', deltaExalted: 96 },
-          { statId: 'c', text: '+38% to Cold Resistance', deltaExalted: 22 },
-          { statId: 'd', text: '+12 to Dexterity', deltaExalted: -4 }
+        mods: [
+          {
+            statId: 'explicit.stat_2250533757',
+            text: '30% increased Movement Speed',
+            tier: 1,
+            status: 'used',
+            deltaExalted: 118
+          },
+          {
+            statId: 'explicit.stat_3299347043',
+            text: '+74 to maximum Life',
+            tier: 6,
+            status: 'used',
+            deltaExalted: 96
+          },
+          {
+            statId: 'explicit.stat_1368271171',
+            text: 'Gain 3 Mana per enemy killed',
+            tier: 8,
+            status: 'unweighted'
+          },
+          {
+            statId: 'explicit.stat_4220027924',
+            text: '+38% to Cold Resistance',
+            tier: 3,
+            status: 'used',
+            deltaExalted: -4
+          },
+          {
+            statId: 'explicit.stat_3261801346',
+            text: '+12 to Dexterity',
+            tier: 7,
+            status: 'relaxed'
+          }
         ],
-        warnings: ['Gli oggetti simili con uno slot libero si vendono intorno a 350 ex']
+        warnings: [
+          'Gli oggetti simili con uno slot libero si vendono intorno a 350 ex',
+          'Stima basata su 3 affissi su 4: per gli altri non ci sono abbastanza oggetti simili'
+        ]
+      })
+    }
+  ],
+  [
+    'Arma · analisi in corso',
+    {
+      item: WEAPON,
+      quick: v({ verdict: 'buono', price: { suggested: 15, min: 8, max: 30 } }),
+      exaltedPerDivine: RATE,
+      progress: { done: 1, total: 8 },
+      result: null
+    }
+  ],
+  [
+    'Arma · danni nel DPS',
+    {
+      item: WEAPON,
+      quick: v({ verdict: 'buono', price: { suggested: 15, min: 8, max: 30 } }),
+      exaltedPerDivine: RATE,
+      progress: { done: 2, total: 8 },
+      result: v({
+        verdict: 'buono',
+        confidence: 'media',
+        price: {
+          suggested: 12,
+          min: 10,
+          max: 250,
+          patient: 250,
+          typical: 250,
+          sample: [1, 1, 250, 250, 250, 250, 1250, 1250]
+        },
+        comparablesCount: 8,
+        tradeUrl: 'https://www.pathofexile.com/trade2/search/poe2/Standard/def',
+        searches: 2,
+        mods: [
+          {
+            statId: 'explicit.stat_691932474',
+            text: '+273 to Accuracy Rating · +105 to Accuracy Rating',
+            tier: 3,
+            status: 'unweighted'
+          },
+          {
+            statId: 'explicit.stat_1037193709',
+            text: 'Adds 54 to 82 Cold Damage',
+            tier: 4,
+            status: 'dps'
+          },
+          {
+            statId: 'explicit.stat_1509134228',
+            text: '51% increased Physical Damage',
+            tier: 4,
+            status: 'dps'
+          },
+          {
+            statId: 'explicit.stat_791928121',
+            text: 'Causes 50% increased Stun Buildup',
+            tier: 4,
+            status: 'unweighted'
+          },
+          {
+            statId: 'explicit.stat_1368271171',
+            text: 'Gain 3 Mana per enemy killed',
+            tier: 8,
+            status: 'unweighted'
+          }
+        ]
       })
     }
   ]

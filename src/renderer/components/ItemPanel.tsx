@@ -1,16 +1,16 @@
 // Pannello dell'analisi approfondita: in corso (avanzamento + stima rapida) e completata.
 import type { CSSProperties, JSX } from 'react'
 import type { ProgressPayload } from '../../core/ipc'
-import type { RareItem, Valuation } from '../../core/types'
+import type { DeepMod, RareItem, Valuation } from '../../core/types'
+import { modStatuses } from '../../core/valuation/mod-status'
 import {
   analysisAge,
   CONFIDENCE_LEVEL,
+  distributionLayout,
   formatDelta,
-  formatExalted,
   formatPrice,
-  formatRange,
   itemClassLabel,
-  patientLine,
+  modStatusTitle,
   priceParts,
   verdictLabel
 } from '../format'
@@ -83,15 +83,8 @@ function Running({ state, onClose }: { state: PanelState; onClose: () => void })
       {item.explicits.length > 0 && (
         <div className="p-sec">
           <h4>Contributo degli affissi</h4>
-          <ul className="contrib">
-            {item.explicits.map((m, i) => (
-              <li className="pending" key={`${m.statId}-${i}`}>
-                <span className="mod">{m.text}</span>
-                <span className="bar" />
-                <span className="delta wait">in attesa</span>
-              </li>
-            ))}
-          </ul>
+          {/* durante l'analisi lo stato viene da oggetto e pesi; "relaxed" si sa solo alla fine */}
+          <ModList mods={modStatuses(item)} pending />
         </div>
       )}
       <footer className="p-foot">
@@ -105,21 +98,92 @@ function Running({ state, onClose }: { state: PanelState; onClose: () => void })
   )
 }
 
-/** Posizione (in %) di fascia e prezzo consigliato su una scala con margine ai lati. */
-function rangeBar(
-  min: number,
-  max: number,
-  suggested: number
-): { span: CSSProperties; mark: CSSProperties } {
-  const pad = (max - min) * 0.5
-  const lo = min - pad
-  const hi = max + pad
-  if (hi <= lo) return { span: { left: '40%', right: '40%' }, mark: { left: '50%' } }
-  const pct = (v: number): number => ((v - lo) / (hi - lo)) * 100
-  return {
-    span: { left: `${pct(min)}%`, right: `${100 - pct(max)}%` },
-    mark: { left: `${pct(suggested)}%` }
-  }
+/** Testo di un affisso con il tier, se noto ("T3"). */
+function ModText({ mod }: { mod: DeepMod }): JSX.Element {
+  return (
+    <span className="mod">
+      {mod.text}
+      {mod.tier !== undefined && <span className="tier">T{mod.tier}</span>}
+    </span>
+  )
+}
+
+/**
+ * Tutti gli affissi dell'oggetto nell'ordine del testo (R34): usati (barra del contributo o
+ * "in attesa"), nel DPS (etichetta), esclusi (grigi e barrati, con il motivo nel tooltip).
+ */
+function ModList({ mods, pending = false }: { mods: DeepMod[]; pending?: boolean }): JSX.Element {
+  const maxDelta = Math.max(1e-9, ...mods.map((m) => Math.abs(m.deltaExalted ?? 0)))
+  return (
+    <ul className="contrib">
+      {mods.map((m, i) => {
+        const key = `${m.statId}-${i}`
+        if (m.status === 'dps') {
+          return (
+            <li className="dps" key={key}>
+              <ModText mod={m} />
+              <span className="tag">nel DPS</span>
+            </li>
+          )
+        }
+        if (m.status !== 'used') {
+          return (
+            <li className="excluded" key={key} title={modStatusTitle(m.status)}>
+              <ModText mod={m} />
+            </li>
+          )
+        }
+        if (pending) {
+          return (
+            <li className="pending" key={key}>
+              <ModText mod={m} />
+              <span className="bar" />
+              <span className="delta wait">in attesa</span>
+            </li>
+          )
+        }
+        const d = m.deltaExalted
+        const neg = d !== undefined && d < 0
+        const width = d === undefined ? '0%' : `${Math.round((Math.abs(d) / maxDelta) * 100)}%`
+        return (
+          <li key={key}>
+            <ModText mod={m} />
+            <span className={neg ? 'bar neg' : 'bar'}>
+              <span style={{ '--w': width } as CSSProperties} />
+            </span>
+            <span className={neg ? 'delta neg' : 'delta pos'}>
+              {d === undefined ? '' : formatDelta(d)}
+            </span>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+/** Barra sottile con i prezzi del campione (scala log) e i marcatori p10, p25 e p50 (R34). */
+function Distribution({
+  sample,
+  p10,
+  p25,
+  p50
+}: {
+  sample: number[]
+  p10: number
+  p25: number
+  p50: number
+}): JSX.Element {
+  const d = distributionLayout(sample, { p10, p25, p50 })
+  return (
+    <div className="p-dist" aria-hidden="true">
+      {d.dots.map((x, i) => (
+        <i key={i} style={{ left: `${x}%` }} />
+      ))}
+      <b className="m-p50" style={{ left: `${d.marks.p50}%` }} />
+      <b className="m-p25" style={{ left: `${d.marks.p25}%` }} />
+      <b className="m-p10" style={{ left: `${d.marks.p10}%` }} />
+    </div>
+  )
 }
 
 function Done({ state, league, onClose }: Props & { state: PanelState }): JSX.Element {
@@ -128,9 +192,15 @@ function Done({ state, league, onClose }: Props & { state: PanelState }): JSX.El
   // ricerche realmente eseguite (dato del core); in mancanza, l'ultimo avanzamento ricevuto
   const searches = v.searches ?? progress.done
   const price = v.price ? priceParts(v.price.suggested, exaltedPerDivine) : null
-  const bar = v.price ? rangeBar(v.price.min, v.price.max, v.price.suggested) : null
-  const contributions = [...(v.contributions ?? [])].sort((a, b) => b.deltaExalted - a.deltaExalted)
-  const maxDelta = Math.max(1e-9, ...contributions.map((c) => Math.abs(c.deltaExalted)))
+  // analisi salvate prima di R34 non hanno `mods`: stato ricavato da oggetto e pesi
+  const mods = v.mods ?? modStatuses(item)
+  const prices: [string, number | undefined][] = v.price
+    ? [
+        ['Vende subito', v.price.suggested],
+        ['Se puoi aspettare', v.price.patient],
+        ['Richiesta tipica', v.price.typical]
+      ]
+    : []
 
   return (
     <div className={`panel v-${v.verdict ?? 'neutral'}`}>
@@ -142,21 +212,28 @@ function Done({ state, league, onClose }: Props & { state: PanelState }): JSX.El
             {verdictLabel(v.verdict)}
           </span>
         </div>
-        {price && v.price && bar && (
+        {price && v.price && (
           <>
             <div className="p-price">
               {price.main} <span className="ex">{price.unit}</span>
             </div>
-            <div className="p-range-bar">
-              <span style={bar.span} />
-              <i style={bar.mark} />
+            <div className="p-prices">
+              {prices.map(([label, value]) =>
+                value === undefined ? null : (
+                  <div key={label}>
+                    <span className="lbl">{label}</span>
+                    <span className="val">{formatPrice(value, exaltedPerDivine)}</span>
+                  </div>
+                )
+              )}
             </div>
-            <div className="p-range">
-              Prezzi {formatRange(v.price.min, v.price.max, exaltedPerDivine)} · consigliato{' '}
-              {formatExalted(v.price.suggested)}
-            </div>
-            {v.price.patient !== undefined && (
-              <div className="p-range">{patientLine(v.price.patient, exaltedPerDivine)}</div>
+            {v.price.sample && v.price.sample.length > 0 && (
+              <Distribution
+                sample={v.price.sample}
+                p10={v.price.suggested}
+                p25={v.price.patient ?? v.price.suggested}
+                p50={v.price.typical ?? v.price.suggested}
+              />
             )}
           </>
         )}
@@ -180,26 +257,10 @@ function Done({ state, league, onClose }: Props & { state: PanelState }): JSX.El
           </div>
         </dl>
       </div>
-      {contributions.length > 0 && (
+      {mods.length > 0 && (
         <div className="p-sec">
           <h4>Contributo degli affissi</h4>
-          <ul className="contrib">
-            {contributions.map((c, i) => {
-              const neg = c.deltaExalted < 0
-              const width = `${Math.round((Math.abs(c.deltaExalted) / maxDelta) * 100)}%`
-              return (
-                <li key={`${c.statId}-${i}`}>
-                  <span className="mod">{c.text}</span>
-                  <span className={neg ? 'bar neg' : 'bar'}>
-                    <span style={{ '--w': width } as CSSProperties} />
-                  </span>
-                  <span className={neg ? 'delta neg' : 'delta pos'}>
-                    {formatDelta(c.deltaExalted)}
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
+          <ModList mods={mods} />
           <div className="contrib-note">
             Differenza di prezzo tra oggetti simili con e senza l&apos;affisso.
           </div>

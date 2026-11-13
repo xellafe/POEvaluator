@@ -3,7 +3,8 @@ import {
   analysisAge,
   formatDelta,
   formatPrice,
-  patientLine,
+  modStatusTitle,
+  distributionLayout,
   priceParts,
   similarCount,
   formatRange,
@@ -128,10 +129,30 @@ describe('analysisAge', () => {
   })
 })
 
-describe('patientLine (R32)', () => {
-  it('"Se puoi aspettare" con il prezzo formattato come gli altri', () => {
-    expect(patientLine(120, 250)).toBe('Se puoi aspettare: 120 ex')
-    expect(patientLine(450, 250)).toBe('Se puoi aspettare: 1.8 div (450 ex)')
-    expect(patientLine(450, null)).toBe('Se puoi aspettare: 450 ex')
+describe('distributionLayout (R34)', () => {
+  it('posizioni su scala log fra il prezzo minimo e il massimo, con margine', () => {
+    const d = distributionLayout([10, 100, 1000], { p10: 10, p25: 100, p50: 1000 })
+    // margine del 5% ai lati: 10 -> 5%, 100 -> 50%, 1000 -> 95%
+    expect(d.dots.map((x) => Math.round(x))).toEqual([5, 50, 95])
+    expect(Math.round(d.marks.p25)).toBe(50)
+  })
+
+  it('tutti i prezzi uguali: tutto al centro', () => {
+    const d = distributionLayout([7, 7, 7], { p10: 7, p25: 7, p50: 7 })
+    expect(d.dots).toEqual([50, 50, 50])
+    expect(d.marks).toEqual({ p10: 50, p25: 50, p50: 50 })
+  })
+
+  it('campione vuoto: niente punti', () => {
+    expect(distributionLayout([], { p10: 1, p25: 2, p50: 3 }).dots).toEqual([])
+  })
+})
+
+describe('modStatusTitle (R34)', () => {
+  it('motivo solo per gli affissi esclusi', () => {
+    expect(modStatusTitle('unweighted')).toBe('Non considerato: affisso di poco valore')
+    expect(modStatusTitle('relaxed')).toBe('Tolto dalla ricerca: pochi oggetti simili')
+    expect(modStatusTitle('used')).toBeUndefined()
+    expect(modStatusTitle('dps')).toBeUndefined()
   })
 })

@@ -1,5 +1,5 @@
 // Formattazione dei testi dell'interfaccia (pura: niente DOM, testata in Vitest).
-import type { Confidence, Verdict } from '../core/types'
+import type { Confidence, ModStatus, Verdict } from '../core/types'
 
 /** Valori >= 10 a intero, < 10 a un decimale (come roundPrice del core); niente ".0" finale. */
 function num(v: number): string {
@@ -31,10 +31,6 @@ export function formatPrice(exalted: number, exaltedPerDivine: number | null): s
   const p = priceParts(exalted, exaltedPerDivine)
   return `${p.main} ${p.unit}`
 }
-
-/** Riga del prezzo "se puoi aspettare" della deep (R32): "Se puoi aspettare: 1.8 div (450 ex)". */
-export const patientLine = (exalted: number, exaltedPerDivine: number | null): string =>
-  `Se puoi aspettare: ${formatPrice(exalted, exaltedPerDivine)}`
 
 /** Prezzo in exalted ("280 ex"), arrotondato come nel resto dell'interfaccia. */
 export const formatExalted = (exalted: number): string => `${num(exalted)} ex`
@@ -154,4 +150,38 @@ export function hotkeyFromKeyEvent(e: KeyLike): string | null {
   const isFunctionKey = /^F\d+$/.test(e.code)
   if (mods.length === 0 && !isFunctionKey) return null
   return [...mods, key].join('+')
+}
+
+/** Margine (in %) ai lati della barra della distribuzione. */
+const DIST_PAD = 5
+
+/**
+ * Posizioni (in % della larghezza) dei prezzi del campione e dei marcatori p10/p25/p50 su scala
+ * logaritmica fra il prezzo minimo e il massimo del campione, con un margine del 5% ai lati.
+ * Con tutti i prezzi uguali (o un solo prezzo) tutto sta al centro.
+ */
+export function distributionLayout(
+  sample: number[],
+  marks: { p10: number; p25: number; p50: number }
+): { dots: number[]; marks: { p10: number; p25: number; p50: number } } {
+  const valid = sample.filter((x) => x > 0)
+  if (valid.length === 0) return { dots: [], marks: { p10: 50, p25: 50, p50: 50 } }
+  const lo = Math.log(Math.min(...valid))
+  const hi = Math.log(Math.max(...valid))
+  const pos = (x: number): number => {
+    if (hi <= lo || x <= 0) return 50
+    const t = (Math.log(x) - lo) / (hi - lo)
+    return DIST_PAD + Math.min(1, Math.max(0, t)) * (100 - 2 * DIST_PAD)
+  }
+  return {
+    dots: valid.map(pos),
+    marks: { p10: pos(marks.p10), p25: pos(marks.p25), p50: pos(marks.p50) }
+  }
+}
+
+/** Tooltip di un affisso escluso dalla ricerca (R34); undefined per gli altri stati. */
+export function modStatusTitle(status: ModStatus): string | undefined {
+  if (status === 'unweighted') return 'Non considerato: affisso di poco valore'
+  if (status === 'relaxed') return 'Tolto dalla ricerca: pochi oggetti simili'
+  return undefined
 }
