@@ -54,6 +54,7 @@ describe('parseItemText', () => {
       tradeValue: 74,
       type: 'prefix',
       tier: 6,
+      tierCount: 9,
       range: { min: 70, max: 84 }
     })
 
@@ -212,5 +213,26 @@ describe('parseItemText: dati delle armi', () => {
 
   it('oggetti non armi: nessun dato arma', () => {
     expect(parseRare('rare-boots.txt').weapon).toBeUndefined()
+  })
+})
+
+describe('numero di tier degli affissi (data/mod-tiers.json)', () => {
+  const counts = (file: string): [string, number | undefined, number | undefined][] =>
+    parseRare(file).explicits.map((m) => [m.text, m.tier, m.tierCount])
+
+  it('bastone: tier e totale della famiglia sulla base', () => {
+    expect(counts('rare-staff.txt')).toEqual([
+      ['+185 to maximum Mana', 4, 11],
+      ['+3 to Level of all Cold Spell Skills', 3, 5],
+      ['28% increased Cast Speed', 5, 7],
+      ['+24 to Intelligence', 4, 8]
+    ])
+  })
+
+  it('quarterstaff: anche i mod ibridi e quelli uniti per stat', () => {
+    const byText = new Map(counts('rare-quarterstaff.txt').map(([t, tier, n]) => [t, [tier, n]]))
+    expect(byText.get('Adds 54 to 82 Cold Damage')).toEqual([4, 10])
+    expect(byText.get('Causes 50% increased Stun Buildup')).toEqual([4, 6])
+    expect(byText.get('Gain 3 Mana per enemy killed')).toEqual([8, 8])
   })
 })

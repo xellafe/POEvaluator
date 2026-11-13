@@ -14,6 +14,8 @@ export interface ItemMod {
   tradeValue: number
   type: ModType
   tier?: number
+  /** Tier totali della famiglia del mod su questa base (data/mod-tiers.json): "Tier 4 di 8". */
+  tierCount?: number
   /**
    * Range del tier, dal testo avanzato, nelle stesse unità di tradeValue: per le stat con più
    * numeri (es. "Adds # to # Fire Damage") min e max sono la media dei rispettivi estremi.
@@ -77,6 +79,8 @@ export interface DeepMod {
   statId: string
   text: string
   tier?: number
+  /** Tier totali della famiglia del mod sulla base, se noti. */
+  tierCount?: number
   status: ModStatus
   /** Contributo in exalted (solo `used`). */
   deltaExalted?: number

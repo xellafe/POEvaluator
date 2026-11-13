@@ -2,6 +2,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ItemMod, ModType, ParseResult, RareItem, WeaponStats } from '../types'
+import { parseModTiers, tierCountOf, type ModTiers } from './mod-tiers'
 import { init } from './vendor/data'
 import { ModifierType } from './vendor/parser/modifiers'
 import type { ParsedModifier } from './vendor/parser/advanced-mod-desc'
@@ -78,15 +79,31 @@ const IMPLICIT_TYPES = new Map<ModifierType, { type: ModType; tradeKey: string }
   [ModifierType.Enchant, { type: 'enchant', tradeKey: 'enchant' }]
 ])
 
-/** Carica stats/items di EE2 da `dataDir` (es. `data/en`). Va chiamata prima di parseItemText. */
+/**
+ * Carica stats/items di EE2 da `dataDir` (es. `data/en`) e, se c'è, `mod-tiers.json` dalla
+ * cartella sopra (senza quel file gli affissi non hanno `tierCount`). Va chiamata prima di
+ * parseItemText.
+ */
 export async function initParserData(dataDir: string): Promise<void> {
-  const [itemsNdjson, statsNdjson] = await Promise.all([
+  const [itemsNdjson, statsNdjson, modTiersJson] = await Promise.all([
     readFile(join(dataDir, 'items.ndjson'), 'utf8'),
-    readFile(join(dataDir, 'stats.ndjson'), 'utf8')
+    readFile(join(dataDir, 'stats.ndjson'), 'utf8'),
+    readFile(join(dataDir, '..', 'mod-tiers.json'), 'utf8').catch(() => null)
   ])
   init({ itemsNdjson, statsNdjson })
   EXPLICIT_ALTERNATIVES = explicitAlternatives(statsNdjson)
+  MOD_TIERS = null
+  if (modTiersJson !== null) {
+    try {
+      MOD_TIERS = parseModTiers(JSON.parse(modTiersJson))
+    } catch {
+      MOD_TIERS = null
+    }
+  }
 }
+
+/** Tier per famiglia e base (data/mod-tiers.json); null se il file manca o non è valido. */
+let MOD_TIERS: ModTiers | null = null
 
 /** id explicit trade -> tutti gli id explicit della stessa stat (canonico = primo). */
 let EXPLICIT_ALTERNATIVES = new Map<string, readonly string[]>()
@@ -153,7 +170,8 @@ export function parseItemText(text: string): ParseResult {
       if (generation !== 'prefix' && generation !== 'suffix') continue
       if (generation === 'prefix') prefixes++
       else suffixes++
-      explicits.push(...toItemMods(mod, generation, ['explicit', mod.info.type]))
+      const tierCount = explicitTierCount(mod, item.info.refName, generation)
+      explicits.push(...toItemMods(mod, generation, ['explicit', mod.info.type], tierCount))
     } else if (mod.info.type === ModifierType.Veiled) {
       // Mod "Desecrated Prefix/Suffix" non ancora rivelato: occupa lo slot ma non ha stat.
       if (mod.info.generation === 'prefix') prefixes++
@@ -217,8 +235,28 @@ function unknownItemFailure(text: string): ParseResult {
   return { ok: false, reason: 'unsupported_item' }
 }
 
+/**
+ * Tier totali della famiglia di un explicit sulla base; undefined senza dati, nome o tier, o se
+ * il conteggio è incoerente con il tier del testo (dati di un'altra versione del gioco).
+ */
+function explicitTierCount(
+  mod: ParsedModifier,
+  baseType: string,
+  generation: 'prefix' | 'suffix'
+): number | undefined {
+  const { name, tier } = mod.info
+  if (!MOD_TIERS || !name || tier === undefined) return undefined
+  const count = tierCountOf(MOD_TIERS, baseType, generation, name)
+  return count !== undefined && count >= tier ? count : undefined
+}
+
 /** Un ItemMod per stat; le stat senza id trade per i tipi richiesti vengono scartate. */
-function toItemMods(mod: ParsedModifier, type: ModType, tradeKeys: string[]): ItemMod[] {
+function toItemMods(
+  mod: ParsedModifier,
+  type: ModType,
+  tradeKeys: string[],
+  tierCount?: number
+): ItemMod[] {
   const out: ItemMod[] = []
   for (const stat of mod.stats) {
     const ids = stat.stat.trade.ids
@@ -236,6 +274,7 @@ function toItemMods(mod: ParsedModifier, type: ModType, tradeKeys: string[]): It
       type
     }
     if (mod.info.tier !== undefined) itemMod.tier = mod.info.tier
+    if (tierCount !== undefined) itemMod.tierCount = tierCount
     if (stat.roll && hasRanges(source)) {
       itemMod.range = { min: stat.roll.min, max: stat.roll.max }
     }

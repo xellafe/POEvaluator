@@ -9,6 +9,7 @@ import {
   similarCount,
   formatRange,
   tierBand,
+  tierTitle,
   foundPrices,
   shortPrice,
   uncertainText,
@@ -81,6 +82,36 @@ describe('tierBand', () => {
     expect(tierBand(6)).toBe('tlow')
     expect(tierBand(12)).toBe('tlow')
     expect(tierBand(undefined)).toBe('tnone')
+  })
+
+  it('relativa al numero di tier della famiglia', () => {
+    // 4 tier: T1 oro, T2 verde, T3 azzurro, T4 spento
+    expect([1, 2, 3, 4].map((t) => tierBand(t, 4))).toEqual(['t1', 't2', 't3', 'tlow'])
+    // 8 tier
+    expect([1, 2, 3, 4, 5, 6, 7, 8].map((t) => tierBand(t, 8))).toEqual([
+      't1',
+      't2',
+      't2',
+      't3',
+      't3',
+      'tmid',
+      'tlow',
+      'tlow'
+    ])
+    // 13 tier: un T4 è ancora verde
+    expect(tierBand(4, 13)).toBe('t2')
+    expect(tierBand(8, 13)).toBe('tmid')
+    // famiglia con un solo tier
+    expect(tierBand(1, 1)).toBe('t1')
+  })
+
+  it('totale incoerente (minore del tier): torna alla scala assoluta', () => {
+    expect(tierBand(5, 3)).toBe('tmid')
+  })
+
+  it('tierTitle', () => {
+    expect(tierTitle(4, 8)).toBe('Tier 4 di 8')
+    expect(tierTitle(4)).toBe('Tier 4')
   })
 })
 

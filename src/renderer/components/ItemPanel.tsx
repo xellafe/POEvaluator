@@ -14,6 +14,7 @@ import {
   modStatusTitle,
   priceParts,
   tierBand,
+  tierTitle,
   uncertainText,
   verdictLabel
 } from '../format'
@@ -108,7 +109,10 @@ function Running({ state, onClose }: { state: PanelState; onClose: () => void })
 function ModText({ mod }: { mod: DeepMod }): JSX.Element {
   return (
     <span className="mod">
-      <span className={`tier ${tierBand(mod.tier)}`}>
+      <span
+        className={`tier ${tierBand(mod.tier, mod.tierCount)}`}
+        title={mod.tier !== undefined ? tierTitle(mod.tier, mod.tierCount) : undefined}
+      >
         {mod.tier !== undefined ? `T${mod.tier}` : ''}
       </span>
       <span className="txt">{mod.text}</span>

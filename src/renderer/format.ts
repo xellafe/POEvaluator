@@ -205,16 +205,32 @@ export function distributionLayout(
   }
 }
 
+export type TierBand = 't1' | 't2' | 't3' | 'tmid' | 'tlow' | 'tnone'
+
 /**
- * Fascia di colore del tier di un affisso (il tier 1 è il migliore): 1 oro, 2 verde, 3 azzurro,
- * 4–5 neutro, da 6 in giù spento; senza tier nessuna fascia.
+ * Fascia di colore del tier di un affisso (il tier 1 è il migliore).
+ * Con il numero di tier della famiglia la fascia è relativa: qualità q = 1 − (tier − 1) / totale,
+ * oro solo per il tier migliore, poi verde (q ≥ 0,75), azzurro (≥ 0,5), neutro (≥ 0,3), spento.
+ * Esempi: su 4 tier T1 oro, T2 verde, T3 azzurro, T4 spento; su 13 tier T2–T4 verdi.
+ * Senza totale la fascia usa il tier assoluto: 1 oro, 2 verde, 3 azzurro, 4–5 neutro, poi spento.
  */
-export function tierBand(tier: number | undefined): 't1' | 't2' | 't3' | 'tmid' | 'tlow' | 'tnone' {
+export function tierBand(tier: number | undefined, count?: number): TierBand {
   if (tier === undefined) return 'tnone'
   if (tier <= 1) return 't1'
+  if (count !== undefined && count >= tier) {
+    const q = 1 - (tier - 1) / count
+    if (q >= 0.75) return 't2'
+    if (q >= 0.5) return 't3'
+    return q >= 0.3 ? 'tmid' : 'tlow'
+  }
   if (tier === 2) return 't2'
   if (tier === 3) return 't3'
   return tier <= 5 ? 'tmid' : 'tlow'
+}
+
+/** Tooltip del tier: "Tier 4 di 8", oppure "Tier 4" senza totale. */
+export function tierTitle(tier: number, count?: number): string {
+  return count !== undefined ? `Tier ${tier} di ${count}` : `Tier ${tier}`
 }
 
 /** Tooltip di un affisso escluso dalla ricerca (R34); undefined per gli altri stati. */

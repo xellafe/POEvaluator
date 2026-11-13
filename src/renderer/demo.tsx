@@ -221,6 +221,7 @@ const PANELS: [string, PanelState][] = [
             statId: 'explicit.stat_2250533757',
             text: '30% increased Movement Speed',
             tier: 1,
+            tierCount: 6,
             status: 'used',
             deltaExalted: 118
           },
@@ -228,6 +229,7 @@ const PANELS: [string, PanelState][] = [
             statId: 'explicit.stat_3299347043',
             text: '+74 to maximum Life',
             tier: 6,
+            tierCount: 9,
             status: 'used',
             deltaExalted: 96
           },
@@ -235,12 +237,14 @@ const PANELS: [string, PanelState][] = [
             statId: 'explicit.stat_1368271171',
             text: 'Gain 3 Mana per enemy killed',
             tier: 8,
+            tierCount: 8,
             status: 'unweighted'
           },
           {
             statId: 'explicit.stat_4220027924',
             text: '+38% to Cold Resistance',
             tier: 3,
+            tierCount: 8,
             status: 'used',
             deltaExalted: -4
           },
@@ -248,6 +252,7 @@ const PANELS: [string, PanelState][] = [
             statId: 'explicit.stat_3261801346',
             text: '+12 to Dexterity',
             tier: 7,
+            tierCount: 8,
             status: 'relaxed'
           }
         ],
@@ -294,30 +299,35 @@ const PANELS: [string, PanelState][] = [
             statId: 'explicit.stat_691932474',
             text: '+273 to Accuracy Rating · +105 to Accuracy Rating',
             tier: 3,
+            tierCount: 9,
             status: 'unweighted'
           },
           {
             statId: 'explicit.stat_1037193709',
             text: 'Adds 54 to 82 Cold Damage',
             tier: 4,
+            tierCount: 10,
             status: 'dps'
           },
           {
             statId: 'explicit.stat_1509134228',
             text: '51% increased Physical Damage',
             tier: 4,
+            tierCount: 8,
             status: 'dps'
           },
           {
             statId: 'explicit.stat_791928121',
             text: 'Causes 50% increased Stun Buildup',
             tier: 4,
+            tierCount: 6,
             status: 'unweighted'
           },
           {
             statId: 'explicit.stat_1368271171',
             text: 'Gain 3 Mana per enemy killed',
             tier: 8,
+            tierCount: 8,
             status: 'unweighted'
           }
         ]
@@ -351,12 +361,14 @@ const PANELS: [string, PanelState][] = [
             statId: 'explicit.stat_1050105434',
             text: '+185 to maximum Mana',
             tier: 4,
+            tierCount: 11,
             status: 'relaxed'
           },
           {
             statId: 'explicit.stat_2254480358',
             text: '+3 to Level of all Cold Spell Skills',
             tier: 3,
+            tierCount: 5,
             status: 'used',
             deltaExalted: 148
           },
@@ -364,12 +376,14 @@ const PANELS: [string, PanelState][] = [
             statId: 'explicit.stat_2891184298',
             text: '28% increased Cast Speed',
             tier: 5,
+            tierCount: 7,
             status: 'relaxed'
           },
           {
             statId: 'explicit.stat_328541901',
             text: '+24 to Intelligence',
             tier: 4,
+            tierCount: 8,
             status: 'relaxed'
           }
         ]

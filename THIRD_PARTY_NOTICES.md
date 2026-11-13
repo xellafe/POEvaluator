@@ -51,3 +51,10 @@ SOFTWARE.
 - Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
 - License: SIL Open Font License 1.1 — full text in
   `node_modules/@fontsource-variable/inter/LICENSE` and at https://openfontlicense.org
+
+## RePoE (repoe-fork)
+
+- Repository: https://github.com/repoe-fork/repoe, data published at https://repoe-fork.github.io/poe2/
+- License: MIT (Copyright (c) 2016 brather1ng). The generated data files are owned by Grinding Gear Games and are used in accordance with their terms of use.
+
+`data/mod-tiers.json` is derived from `mods.min.json` and `base_items.min.json` (downloaded on 2026-11-14) by `scripts/build-mod-tiers.mjs`: it keeps only mod families, spawn weights and base tags, used to show how many tiers an affix has on a base.

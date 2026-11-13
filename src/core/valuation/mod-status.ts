@@ -72,6 +72,7 @@ export function modStatuses(item: RareItem, removed: ReadonlySet<string> = new S
           : 'used'
     const out: DeepMod = { statId: m.statId, text: m.text, status }
     if (m.tier !== undefined) out.tier = m.tier
+    if (m.tierCount !== undefined) out.tierCount = m.tierCount
     return out
   })
 }
