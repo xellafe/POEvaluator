@@ -59,6 +59,14 @@ export const partialModsWarning = (used: number, total: number): string =>
   `Stima basata su ${used} ${used === 1 ? 'affisso' : 'affissi'} su ${total}: ` +
   'per gli altri non ci sono abbastanza oggetti simili'
 
+/** Sotto questo numero di prezzi puliti la stima è incerta (= soglia della confidenza media). */
+export const UNCERTAIN_MAX_PRICES = 6
+
+export const fewPricesReason = (n: number): string => `solo ${n} oggetti simili in vendita`
+
+export const fewModsReason = (used: number, total: number): string =>
+  `confronto su ${used} ${used === 1 ? 'affisso' : 'affissi'} su ${total}`
+
 export const openSlotsWarning = (priceExalted: number): string =>
   `Gli oggetti simili con uno slot libero si vendono intorno a ${roundPrice(priceExalted)} ex`
 
@@ -330,8 +338,17 @@ export async function deepAnalysis(
   }
   result.searches = searches
 
-  if (modsRemoved) {
-    // stima su una parte degli affissi: non è la stima dell'oggetto intero (I3)
+  // stima incerta: pochi prezzi o confronto su meno di metà degli affissi
+  const uncertain: string[] = []
+  if (priced.comparablesCount < UNCERTAIN_MAX_PRICES) {
+    uncertain.push(fewPricesReason(priced.comparablesCount))
+  }
+  const fewMods = queryMods.length * 2 < plan.mods.length
+  if (fewMods) uncertain.push(fewModsReason(queryMods.length, plan.mods.length))
+  if (uncertain.length > 0) result.uncertain = uncertain
+  if (modsRemoved && !fewMods) {
+    // stima su una parte degli affissi: non è la stima dell'oggetto intero (I3); con meno di
+    // metà degli affissi lo dice già la stima incerta
     result.warnings.push(partialModsWarning(queryMods.length, plan.mods.length))
   }
   for (const m of result.mods) {

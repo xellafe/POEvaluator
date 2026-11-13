@@ -128,6 +128,11 @@ export interface Valuation {
    * quelli usati, il contributo (assente se non calcolato o nascosto per pochi prezzi).
    */
   mods?: DeepMod[]
+  /**
+   * Solo deep: motivi per cui la stima è incerta (pochi prezzi, confronto su meno di metà degli
+   * affissi), in minuscolo per comporli in una frase. Assente se la stima è solida o non c'è.
+   */
+  uncertain?: string[]
   comparablesCount: number
   tradeUrl?: string
   /** Ricerche trade eseguite dall'analisi approfondita (solo deep). */

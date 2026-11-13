@@ -323,6 +323,58 @@ const PANELS: [string, PanelState][] = [
         ]
       })
     }
+  ],
+  [
+    'Bastone · stima incerta',
+    {
+      item: { ...ITEM, itemClass: 'weapon.staff', name: 'Loath Spell', baseType: 'Roaring Staff' },
+      quick: QUICK,
+      exaltedPerDivine: 640,
+      progress: { done: 7, total: 8 },
+      result: v({
+        verdict: 'ottimo',
+        confidence: 'bassa',
+        price: {
+          suggested: 152,
+          min: 91,
+          max: 640,
+          patient: 335,
+          typical: 640,
+          sample: [30, 640, 6400]
+        },
+        comparablesCount: 3,
+        searches: 7,
+        uncertain: ['solo 3 oggetti simili in vendita', 'confronto su 1 affisso su 4'],
+        tradeUrl: 'https://www.pathofexile.com/trade2/search/poe2/Standard/ghi',
+        mods: [
+          {
+            statId: 'explicit.stat_1050105434',
+            text: '+185 to maximum Mana',
+            tier: 4,
+            status: 'relaxed'
+          },
+          {
+            statId: 'explicit.stat_2254480358',
+            text: '+3 to Level of all Cold Spell Skills',
+            tier: 3,
+            status: 'used',
+            deltaExalted: 148
+          },
+          {
+            statId: 'explicit.stat_2891184298',
+            text: '28% increased Cast Speed',
+            tier: 5,
+            status: 'relaxed'
+          },
+          {
+            statId: 'explicit.stat_328541901',
+            text: '+24 to Intelligence',
+            tier: 4,
+            status: 'relaxed'
+          }
+        ]
+      })
+    }
   ]
 ]
 

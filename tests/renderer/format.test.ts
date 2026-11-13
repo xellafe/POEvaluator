@@ -8,6 +8,9 @@ import {
   priceParts,
   similarCount,
   formatRange,
+  foundPrices,
+  shortPrice,
+  uncertainText,
   hotkeyFromKeyEvent,
   hotkeyParts,
   itemClassLabel,
@@ -43,6 +46,27 @@ describe('similarCount', () => {
   it('singolare e plurale', () => {
     expect(similarCount(1)).toBe('1 oggetto simile')
     expect(similarCount(23)).toBe('23 oggetti simili')
+  })
+})
+
+describe('stima incerta', () => {
+  it('shortPrice: exalted o divine, senza parentesi', () => {
+    expect(shortPrice(30, 640)).toBe('30 ex')
+    expect(shortPrice(6400, 640)).toBe('10 div')
+    expect(shortPrice(1166.72, 640)).toBe('1.8 div')
+    expect(shortPrice(6400, null)).toBe('6400 ex')
+  })
+
+  it('foundPrices: tutti fino a 5, altrimenti dal più basso al più alto', () => {
+    expect(foundPrices([640, 30, 6400], 640)).toBe('30 ex · 1 div · 10 div')
+    expect(foundPrices([50, 330, 640, 640, 640, 1166.72, 3200], 640)).toBe('50 ex – 5 div')
+    expect(foundPrices([], 640)).toBe('')
+  })
+
+  it('uncertainText: motivi uniti, prima lettera maiuscola', () => {
+    expect(uncertainText(['solo 3 oggetti simili in vendita', 'confronto su 1 affisso su 4'])).toBe(
+      'Solo 3 oggetti simili in vendita, confronto su 1 affisso su 4: il prezzo può variare molto'
+    )
   })
 })
 

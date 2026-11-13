@@ -9,9 +9,11 @@ import {
   distributionLayout,
   formatDelta,
   formatPrice,
+  foundPrices,
   itemClassLabel,
   modStatusTitle,
   priceParts,
+  uncertainText,
   verdictLabel
 } from '../format'
 import { ConfidenceBars, Icon } from './Icon'
@@ -171,17 +173,22 @@ function ModList({ mods, pending = false }: { mods: DeepMod[]; pending?: boolean
   )
 }
 
-/** Barra sottile con i prezzi del campione (scala log) e i marcatori p10, p25 e p50 (R34). */
+/**
+ * Barra sottile con i prezzi del campione (scala log) e i marcatori p10, p25 e p50 (R34);
+ * senza marcatori per una stima incerta (i percentili su pochi prezzi non dicono nulla).
+ */
 function Distribution({
   sample,
   p10,
   p25,
-  p50
+  p50,
+  marks = true
 }: {
   sample: number[]
   p10: number
   p25: number
   p50: number
+  marks?: boolean
 }): JSX.Element {
   const d = distributionLayout(sample, { p10, p25, p50 })
   return (
@@ -189,9 +196,13 @@ function Distribution({
       {d.dots.map((x, i) => (
         <i key={i} style={{ left: `${x}%` }} />
       ))}
-      <b className="m-p50" style={{ left: `${d.marks.p50}%` }} />
-      <b className="m-p25" style={{ left: `${d.marks.p25}%` }} />
-      <b className="m-p10" style={{ left: `${d.marks.p10}%` }} />
+      {marks && (
+        <>
+          <b className="m-p50" style={{ left: `${d.marks.p50}%` }} />
+          <b className="m-p25" style={{ left: `${d.marks.p25}%` }} />
+          <b className="m-p10" style={{ left: `${d.marks.p10}%` }} />
+        </>
+      )}
     </div>
   )
 }
@@ -204,6 +215,8 @@ function Done({ state, league, onClose }: Props & { state: PanelState }): JSX.El
   const price = v.price ? priceParts(v.price.suggested, exaltedPerDivine) : null
   // analisi salvate prima di R34 non hanno `mods`: stato ricavato da oggetto e pesi
   const mods = v.mods ?? modStatuses(item)
+  // stima incerta: niente prezzo consigliato, solo i prezzi trovati e il motivo
+  const uncertain = v.verdict !== null && v.uncertain !== undefined && v.uncertain.length > 0
   const prices: [string, number | undefined][] = v.price
     ? [
         ['Vende subito', v.price.suggested],
@@ -221,8 +234,29 @@ function Done({ state, league, onClose }: Props & { state: PanelState }): JSX.El
             <Icon name={v.verdict ?? 'warn'} />
             {verdictLabel(v.verdict)}
           </span>
+          {uncertain && <span className="p-uncertain">Stima incerta</span>}
         </div>
-        {price && v.price && (
+        {uncertain && v.uncertain && (
+          <>
+            {v.price?.sample && v.price.sample.length > 0 && (
+              <>
+                <div className="p-found">
+                  <span className="lbl">Prezzi trovati</span>
+                  <span className="val">{foundPrices(v.price.sample, exaltedPerDivine)}</span>
+                </div>
+                <Distribution
+                  sample={v.price.sample}
+                  p10={v.price.suggested}
+                  p25={v.price.suggested}
+                  p50={v.price.suggested}
+                  marks={false}
+                />
+              </>
+            )}
+            <div className="p-uncertain-why">{uncertainText(v.uncertain)}</div>
+          </>
+        )}
+        {!uncertain && price && v.price && (
           <>
             <div className="p-price">
               {price.main} <span className="ex">{price.unit}</span>

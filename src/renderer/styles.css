@@ -418,6 +418,42 @@ kbd {
   font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
+/* stima incerta: etichetta accanto al verdetto, prezzi trovati e motivo */
+.p-row .p-uncertain {
+  align-self: center;
+  padding: 2px 9px;
+  border: 1px dashed var(--muted);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.p-row:has(.p-uncertain) {
+  justify-content: flex-start;
+}
+.p-found {
+  display: grid;
+  gap: 1px;
+  margin-top: 10px;
+}
+.p-found .lbl {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.p-found .val {
+  font-weight: 700;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.p-uncertain-why {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
 /* distribuzione dei prezzi del campione su scala log, con i marcatori p10/p25/p50 */
 .p-dist {
   position: relative;

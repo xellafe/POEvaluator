@@ -32,6 +32,32 @@ export function formatPrice(exalted: number, exaltedPerDivine: number | null): s
   return `${p.main} ${p.unit}`
 }
 
+/** Prezzo breve, senza exalted tra parentesi: "30 ex", "1.8 div". */
+export function shortPrice(exalted: number, exaltedPerDivine: number | null): string {
+  return hasDivine(exalted, exaltedPerDivine)
+    ? `${div(exalted, exaltedPerDivine)} div`
+    : `${num(exalted)} ex`
+}
+
+/**
+ * Prezzi trovati per una stima incerta: tutti se sono al massimo 5 ("30 ex · 1 div · 10 div"),
+ * altrimenti dal più basso al più alto ("30 ex – 10 div").
+ */
+export function foundPrices(sample: number[], exaltedPerDivine: number | null): string {
+  const sorted = [...sample].sort((a, b) => a - b)
+  if (sorted.length === 0) return ''
+  if (sorted.length <= 5) return sorted.map((p) => shortPrice(p, exaltedPerDivine)).join(' · ')
+  const lo = shortPrice(sorted[0], exaltedPerDivine)
+  const hi = shortPrice(sorted[sorted.length - 1], exaltedPerDivine)
+  return `${lo} – ${hi}`
+}
+
+/** Spiegazione di una stima incerta dai motivi del core: "Solo 3 oggetti simili in vendita: …". */
+export function uncertainText(reasons: string[]): string {
+  const s = reasons.join(', ')
+  return `${s.charAt(0).toUpperCase()}${s.slice(1)}: il prezzo può variare molto`
+}
+
 /** Prezzo in exalted ("280 ex"), arrotondato come nel resto dell'interfaccia. */
 export const formatExalted = (exalted: number): string => `${num(exalted)} ex`
 

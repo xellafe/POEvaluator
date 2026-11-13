@@ -724,17 +724,48 @@ describe('deepAnalysis', () => {
     )
   })
 
-  it('rilassamento fino a un solo affisso: avviso al singolare', async () => {
+  it('rilassamento fino a un solo affisso: stima incerta al singolare, senza avviso doppio', async () => {
     const { client } = fakeClient((q) =>
       modIdsOf(q).length >= 2
         ? { total: 2, prices: [10, 20] }
         : { total: 20, prices: range(20, () => 50) }
     )
     const v = await deepAnalysis(boots(fourMods()), deps(client))
-    expect(v.warnings).toContain(
-      'Stima basata su 1 affisso su 4: per gli altri non ci sono abbastanza oggetti simili'
-    )
+    expect(v.uncertain).toEqual(['confronto su 1 affisso su 4'])
+    expect(v.warnings.some((w) => w.startsWith('Stima basata su'))).toBe(false)
     expect(v.confidence).toBe('media')
+  })
+
+  it('stima incerta: meno di 6 prezzi', async () => {
+    const { client } = fakeClient(() => ({ total: 8, prices: [30, 300, 640, 700] }))
+    const v = await deepAnalysis(boots(fourMods()), deps(client))
+    expect(v.verdict).not.toBeNull()
+    expect(v.uncertain).toEqual(['solo 4 oggetti simili in vendita'])
+  })
+
+  it('stima incerta: pochi prezzi e metà degli affissi tolti insieme', async () => {
+    const { client } = fakeClient((q) =>
+      modIdsOf(q).length >= 2 ? { total: 0, prices: [] } : { total: 3, prices: [30, 300, 640] }
+    )
+    const v = await deepAnalysis(boots(fourMods()), deps(client))
+    expect(v.uncertain).toEqual(['solo 3 oggetti simili in vendita', 'confronto su 1 affisso su 4'])
+  })
+
+  it('stima non incerta: 3 affissi su 4 e prezzi sufficienti (resta l avviso parziale)', async () => {
+    const { client } = fakeClient((q) =>
+      modIdsOf(q).length >= 4
+        ? { total: 2, prices: [10, 20] }
+        : { total: 20, prices: range(20, () => 50) }
+    )
+    const v = await deepAnalysis(boots(fourMods()), deps(client))
+    expect(v.uncertain).toBeUndefined()
+  })
+
+  it('dati insufficienti: nessuna stima incerta (non c è stima)', async () => {
+    const { client } = fakeClient(() => ({ total: 0, prices: [] }))
+    const v = await deepAnalysis(boots(fourMods()), deps(client))
+    expect(v.verdict).toBeNull()
+    expect(v.uncertain).toBeUndefined()
   })
 
   it('senza mod tolti, con il gruppo not e >= 15 prezzi: confidenza alta', async () => {
