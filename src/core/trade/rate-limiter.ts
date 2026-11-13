@@ -95,6 +95,13 @@ export const MAX_LOADED_BLOCK_MS = 60 * 60_000
 /** Quota di ogni regola che le richieste background possono usare. */
 export const BACKGROUND_SHARE = 0.5
 
+/**
+ * Quota di ogni regola che le richieste dell'utente possono usare. Il margine serve perché il
+ * trade risponde 429 anche sotto i limiti dichiarati (prova del 2026-11-13: 429 senza header e
+ * Retry-After 600 con 20 ricerche su 30 nei 5 minuti).
+ */
+export const USER_SHARE = 0.8
+
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 const isStr = (v: unknown): v is string => typeof v === 'string' && v !== ''
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
@@ -140,17 +147,25 @@ export class RateLimiter {
   }
 
   /**
-   * Attesa prima della prossima richiesta. Le richieste normali usano ogni regola fino a
-   * maxHits - 1; quelle `background` si fermano al 50%: partono solo se, contandole, gli hit
-   * della finestra non superano metà di maxHits (almeno 1).
+   * Attesa prima della prossima richiesta.
+   * - Tetto per regola: le richieste normali usano l'80% di maxHits (al massimo maxHits - 1),
+   *   quelle `background` il 50%; partono solo se, contandole, gli hit della finestra restano
+   *   entro il tetto (almeno 1).
+   * - Cadenza: tra due richieste passa almeno il periodo della regola più stretta diviso maxHits
+   *   (search 5/10 s → 2 s), così le ricerche non partono a raffica.
    */
   delayMs(background = false): number {
     const t = this.now()
     let wait = Math.max(0, this.blockedUntil - t)
+    const last = this.requests.at(-1)
+    if (last !== undefined && this.rules.length > 0) {
+      const gap = Math.min(...this.rules.map((r) => (r.periodSec * 1000) / r.maxHits))
+      wait = Math.max(wait, last + gap - t)
+    }
     for (const rule of this.rules) {
       const ceiling = background
         ? Math.max(1, Math.floor(rule.maxHits * BACKGROUND_SHARE))
-        : Math.max(1, rule.maxHits - 1)
+        : Math.max(1, Math.min(rule.maxHits - 1, Math.floor(rule.maxHits * USER_SHARE)))
       const periodMs = rule.periodSec * 1000
       const window = this.requests.filter((r) => t - r < periodMs)
       const server = this.serverHits.get(`${rule.group}|${rule.periodSec}`)

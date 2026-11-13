@@ -164,7 +164,10 @@ describe('TradeClient', () => {
     })
     await client.search('Standard', {}, 'user')
     expect(seen).toEqual([])
-    await client.search('Standard', {}, 'user')
+    // la seconda ricerca parte dopo la cadenza (10:10 → 1 s)
+    const second = client.search('Standard', {}, 'user')
+    await vi.advanceTimersByTimeAsync(1000)
+    await second
     expect(seen).toEqual(['search policy=p rules=Ip Ip=10:10:60 Ip-State=1:10:5 Retry-After=-'])
     expect(rateLimited).toEqual([])
   })
@@ -633,16 +636,16 @@ describe('budget background (50% di ogni regola)', () => {
       })
     })
     const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
-    // 4:10 → background al massimo 2 hit nella finestra
+    // 4:10 → background al massimo 2 hit nella finestra, cadenza 2,5 s
     const ps = [
       client.search('Standard', { tag: 'b1' }, 'background'),
       client.search('Standard', { tag: 'b2' }, 'background'),
       client.search('Standard', { tag: 'b3' }, 'background')
     ]
-    await vi.advanceTimersByTimeAsync(100)
+    await vi.advanceTimersByTimeAsync(3000)
     expect(order).toEqual(['b1', 'b2'])
     const u = client.search('Standard', { tag: 'u' }, 'user')
-    await vi.advanceTimersByTimeAsync(10)
+    await vi.advanceTimersByTimeAsync(2100)
     await u
     expect(order).toEqual(['b1', 'b2', 'u'])
     await vi.advanceTimersByTimeAsync(10_000)

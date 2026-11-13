@@ -73,13 +73,44 @@ describe('RateLimiter', () => {
     expect(d).toBeLessThanOrEqual(10000)
   })
 
-  it('con 6 hit su 8 (sotto il tetto 7) non ritarda, con 7 sì', () => {
-    const l = new RateLimiter(() => 0)
+  it('con 5 hit su 8 (sotto il tetto 80% = 6) non ritarda, con 6 sì', () => {
+    let t = 0
+    const l = new RateLimiter(() => t)
     l.update(headers({ 'X-Rate-Limit-Rules': 'Ip', 'X-Rate-Limit-Ip': '8:10:60' }))
-    for (let i = 0; i < 6; i++) l.recordRequest()
+    for (let i = 0; i < 5; i++) l.recordRequest()
+    t = 2000
     expect(l.delayMs()).toBe(0)
     l.recordRequest()
-    expect(l.delayMs()).toBe(10000)
+    t = 4000
+    // 6 hit: si attende che esca la prima (t = 0 + 10 s)
+    expect(l.delayMs()).toBe(6000)
+  })
+
+  it('cadenza: tra due richieste passa il periodo della regola più stretta diviso maxHits', () => {
+    let t = 0
+    const l = new RateLimiter(() => t)
+    l.update(headers({ 'X-Rate-Limit-Rules': 'Ip', 'X-Rate-Limit-Ip': '5:10:60,15:60:300' }))
+    l.recordRequest()
+    // 5:10 → 2 s, 15:60 → 4 s: vale la più stretta (2 s)
+    expect(l.delayMs()).toBe(2000)
+    t = 1500
+    expect(l.delayMs()).toBe(500)
+    t = 2000
+    expect(l.delayMs()).toBe(0)
+  })
+
+  it('tetto user 80%: 30:300 si ferma a 24 hit', () => {
+    let t = 0
+    const l = new RateLimiter(() => t)
+    l.update(headers({ 'X-Rate-Limit-Rules': 'Ip', 'X-Rate-Limit-Ip': '30:300:1800' }))
+    for (let i = 0; i < 23; i++) {
+      l.recordRequest()
+      t += 10_000
+    }
+    expect(l.delayMs()).toBe(0)
+    l.recordRequest()
+    t += 10_000
+    expect(l.delayMs()).toBeGreaterThan(0)
   })
 
   it('la finestra scorre: dopo il periodo si può richiamare', () => {
@@ -246,15 +277,18 @@ describe('diagnostica degli header', () => {
 })
 
 describe('budget delle richieste background (50% di ogni regola)', () => {
-  it('8:10: background si ferma a 4 hit, user prosegue fino a 7', () => {
-    const l = new RateLimiter(() => 0)
+  it('8:10: background si ferma a 4 hit, user prosegue fino a 6', () => {
+    let t = 0
+    const l = new RateLimiter(() => t)
     l.update(headers({ 'X-Rate-Limit-Rules': 'Ip', 'X-Rate-Limit-Ip': '8:10:60' }))
     for (let i = 0; i < 3; i++) l.recordRequest()
+    t = 2000
     // 3 hit: la quarta porta al 50% esatto, consentita
     expect(l.delayMs(true)).toBe(0)
     l.recordRequest()
-    // 4 hit: la quinta supererebbe il 50%
-    expect(l.delayMs(true)).toBe(10_000)
+    t = 4000
+    // 4 hit: la quinta supererebbe il 50% (si attende l'uscita della prima, a 10 s)
+    expect(l.delayMs(true)).toBe(6000)
     expect(l.delayMs()).toBe(0)
   })
 
@@ -375,7 +409,8 @@ describe('stato persistente con orologio spostato (fromJSON)', () => {
     )
     expect(r.toJSON().requests).toEqual([T - 1000])
     expect(r.toJSON().serverHits).toEqual([{ group: 'Ip', periodSec: 300, hits: 1, at: T - 5_000 }])
-    expect(r.delayMs()).toBe(0)
+    // resta solo la cadenza dalla richiesta valida (3:60 → 20 s da T - 1 s)
+    expect(r.delayMs()).toBe(19_000)
   })
 
   it('blockedUntil oltre now + 1 ora viene scartato; entro il tetto resta', () => {
