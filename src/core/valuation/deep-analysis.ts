@@ -4,7 +4,10 @@ import { buildQuery, indexedOptionFor, type QueryOptions } from '../trade/query-
 import { abortError, tradeUrl, type SearchResult, type TradeClient } from '../trade/trade-client'
 import { toListing } from '../trade/listing-mapper'
 import type { ItemMod, Listing, RareItem, Valuation } from '../types'
-import { weightsFor, type Weights } from './features'
+import { weightsFor, type Weights } from './weights'
+import { dpsCoverage, DPS_EPSILON, isAttackWeapon, modStatuses } from './mod-status'
+
+export { isAttackWeapon, LOCAL_DAMAGE_STATS } from './mod-status'
 import {
   cleanParityPrices,
   MIN_PARITY_PRICES,
@@ -46,33 +49,6 @@ export const SAMPLE_CAP = 60
 const NOT_MIN_WEIGHT = 0.4
 /** Stat massime nel gruppo not. */
 const NOT_MAX_STATS = 12
-/** Sotto questo DPS un'arma non ha quel tipo di danno (arrotondamenti del testo). */
-const DPS_EPSILON = 1
-
-/**
- * Stat di danno locali delle armi (data/en/stats.ndjson, id interni `local_*`): nelle armi
- * d'attacco il loro effetto è già nel DPS, quindi la query usa `pdps`/`edps` al posto loro.
- */
-export const LOCAL_PHYSICAL_STATS: readonly string[] = [
-  'explicit.stat_1509134228', // #% increased Physical Damage (local_physical_damage_+%)
-  'explicit.stat_1940865751' // Adds # to # Physical Damage (local_minimum_added_physical_damage)
-]
-export const LOCAL_ELEMENTAL_STATS: readonly string[] = [
-  'explicit.stat_709508406', // Adds # to # Fire Damage (local_minimum_added_fire_damage)
-  'explicit.stat_1037193709', // Adds # to # Cold Damage (local_minimum_added_cold_damage)
-  'explicit.stat_3336890334' // Adds # to # Lightning Damage (local_minimum_added_lightning_damage)
-]
-/** #% increased Attack Speed (local_attack_speed_+%): entra sia nel pdps sia nell'edps. */
-const LOCAL_ATTACK_SPEED = 'explicit.stat_210067635'
-export const LOCAL_DAMAGE_STATS: readonly string[] = [
-  ...LOCAL_PHYSICAL_STATS,
-  ...LOCAL_ELEMENTAL_STATS,
-  LOCAL_ATTACK_SPEED
-]
-
-/** Armi senza danno d'attacco (incantatori): nessun filtro DPS. */
-const CASTER_WEAPONS = new Set(['weapon.wand', 'weapon.staff', 'weapon.sceptre'])
-
 /** Messaggio di "Dati insufficienti" dell'analisi approfondita (nessun verdetto, R26). */
 export const DEEP_NO_DATA_MESSAGE = 'Non ho trovato oggetti simili in vendita'
 /** Come sopra, quando gli oggetti simili ci sono ma sono meno di 3. */
@@ -95,11 +71,6 @@ export function sortModsByWeight(mods: ItemMod[], weights: Weights): ItemMod[] {
   return [...mods].sort(
     (a, b) => (weights[b.statId] ?? 0) - (weights[a.statId] ?? 0) || tier(a) - tier(b)
   )
-}
-
-/** Categorie `weapon.*` con danno d'attacco (tutte tranne bacchette, bastoni e scettri). */
-export function isAttackWeapon(itemClass: string): boolean {
-  return itemClass.startsWith('weapon.') && !CASTER_WEAPONS.has(itemClass)
 }
 
 /** Ingredienti della query "alla pari" di un oggetto (R31). */
@@ -149,22 +120,6 @@ export function parityPlan(item: RareItem): ParityPlan {
   if (item.openPrefixes === 0) plan.maxOpenPrefixes = 0
   if (item.openSuffixes === 0) plan.maxOpenSuffixes = 0
   return plan
-}
-
-/**
- * Stat di danno locali coperte dal filtro DPS dell'oggetto. Un tipo di danno è coperto solo se
- * l'arma lo ha: su un'arma solo fisica (edps 0) non c'è filtro edps, quindi i flat elementali
- * restano stat normali (nel not se hanno peso); lo stesso per il fisico con pdps ~0.
- * La velocità d'attacco locale entra in tutti e due i DPS.
- */
-function dpsCoverage(item: RareItem): (statId: string) => boolean {
-  const weapon = isAttackWeapon(item.itemClass) ? item.weapon : undefined
-  if (!weapon) return () => false
-  const covered = new Set<string>()
-  if (weapon.pdps >= DPS_EPSILON) LOCAL_PHYSICAL_STATS.forEach((id) => covered.add(id))
-  if (weapon.edps >= DPS_EPSILON) LOCAL_ELEMENTAL_STATS.forEach((id) => covered.add(id))
-  if (covered.size > 0) covered.add(LOCAL_ATTACK_SPEED)
-  return (statId) => covered.has(statId)
 }
 
 /** Variante di una ricerca rispetto alla query base del piano. */
@@ -330,6 +285,10 @@ export async function deepAnalysis(
     tradeUrl: tradeUrl(league, base.id),
     searches
   }
+  // stato degli affissi (R34): quelli tolti dal rilassamento sono "relaxed"
+  const kept = new Set(queryMods.map((m) => m.statId))
+  const removed = new Set(plan.mods.filter((m) => !kept.has(m.statId)).map((m) => m.statId))
+  result.mods = modStatuses(item, removed)
   if (priced.verdict === null) {
     // meno di 3 prezzi: nessun verdetto, solo la spiegazione
     result.warnings = [priced.comparablesCount === 0 ? DEEP_NO_DATA_MESSAGE : DEEP_FEW_DATA_MESSAGE]
@@ -337,7 +296,7 @@ export async function deepAnalysis(
   }
 
   const baseP10 = sampleP10(basePrices)
-  const contributions: NonNullable<Valuation['contributions']> = []
+  const deltas = new Map<string, number>()
   if (baseP10 !== null) {
     // 3. contributi: oggetti alla pari senza quell'affisso
     for (const m of queryMods) {
@@ -350,11 +309,7 @@ export async function deepAnalysis(
       const p10 = sampleP10(await fetchPrices(r, SIDE_FETCH))
       if (p10 === null) continue
       const delta = baseP10 - p10
-      contributions.push({
-        statId: m.statId,
-        text: m.text,
-        deltaExalted: Math.sign(delta) * roundPrice(Math.abs(delta)) || 0
-      })
+      deltas.set(m.statId, Math.sign(delta) * roundPrice(Math.abs(delta)) || 0)
     }
 
     // 4. slot occupati: la stima resta sugli oggetti alla pari (stessi slot pieni)
@@ -379,6 +334,9 @@ export async function deepAnalysis(
     // stima su una parte degli affissi: non è la stima dell'oggetto intero (I3)
     result.warnings.push(partialModsWarning(queryMods.length, plan.mods.length))
   }
-  if (contributions.length > 0) result.contributions = contributions
+  for (const m of result.mods) {
+    const d = deltas.get(m.statId)
+    if (d !== undefined && m.status === 'used') m.deltaExalted = d
+  }
   return result
 }

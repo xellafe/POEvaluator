@@ -6,7 +6,7 @@ import { initParserData, parseItemText } from '../../src/core/parser/parse-item'
 import { DEFAULT_SETTINGS } from '../../src/core/settings'
 import { isAbortError, type TradeClient } from '../../src/core/trade/trade-client'
 import { EMPTY_PREFIX_STAT_ID, EMPTY_SUFFIX_STAT_ID } from '../../src/core/trade/query-builder'
-import type { ItemMod, RareItem } from '../../src/core/types'
+import type { ItemMod, RareItem, Valuation } from '../../src/core/types'
 import {
   deepAnalysis,
   LOCAL_DAMAGE_STATS,
@@ -186,6 +186,16 @@ const fourMods = (): ItemMod[] => [
 
 // Stat di valore degli stivali che fourMods() non ha (peso >= 0.4, per peso decrescente).
 const BOOTS_NOT = [COLD_RES, LIGHTNING_RES, CHAOS_RES]
+
+/** Contributi (mod usati con delta) dal nuovo campo `mods` (R34). */
+function contributionsOf(
+  v: Valuation
+): { statId: string; text: string; deltaExalted: number }[] | undefined {
+  const out = (v.mods ?? [])
+    .filter((m) => m.deltaExalted !== undefined)
+    .map((m) => ({ statId: m.statId, text: m.text, deltaExalted: m.deltaExalted as number }))
+  return out.length > 0 ? out : undefined
+}
 
 const fixtureItem = (name: string): RareItem => {
   const r = parseItemText(readFileSync(join(__dirname, '../fixtures/items', name), 'utf8'))
@@ -523,7 +533,7 @@ describe('deepAnalysis', () => {
       return { total: 12, prices: range(12, () => 120) }
     })
     const v = await deepAnalysis(boots(mods), deps(client))
-    expect(v.contributions).toEqual([
+    expect(contributionsOf(v)).toEqual([
       { statId: MOVE, text: `text ${MOVE}`, deltaExalted: 60 },
       { statId: LIFE, text: `text ${LIFE}`, deltaExalted: 0 },
       { statId: FIRE_RES, text: `text ${FIRE_RES}`, deltaExalted: -20 }
@@ -546,7 +556,7 @@ describe('deepAnalysis', () => {
       return { total: 12, prices: range(12, () => 70) }
     })
     const v = await deepAnalysis(boots(mods), deps(client))
-    expect(v.contributions).toEqual([{ statId: LIFE, text: `text ${LIFE}`, deltaExalted: 30 }])
+    expect(contributionsOf(v)).toEqual([{ statId: LIFE, text: `text ${LIFE}`, deltaExalted: 30 }])
   })
 
   it('meno di 3 prezzi dopo il rilassamento: nessun verdetto, niente contributi né slot', async () => {
@@ -560,7 +570,7 @@ describe('deepAnalysis', () => {
     expect(v.verdict).toBeNull()
     expect(v.price).toBeUndefined()
     expect(v.confidence).toBe('bassa')
-    expect(v.contributions).toBeUndefined()
+    expect(contributionsOf(v)).toBeUndefined()
     expect(v.warnings).toEqual(['Troppo pochi oggetti simili in vendita per una stima'])
   })
 
@@ -623,7 +633,7 @@ describe('deepAnalysis', () => {
     // il contributo confronta 10 prezzi equidistanti della base con i 10 della variante
     const { client } = fakeClient(() => ({ total: 20, prices: range(20, (i) => 10 + i * 5) }))
     const v = await deepAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))
-    expect(v.contributions).toEqual([
+    expect(contributionsOf(v)).toEqual([
       { statId: MOVE, text: `text ${MOVE}`, deltaExalted: 0 },
       { statId: LIFE, text: `text ${LIFE}`, deltaExalted: 0 }
     ])
@@ -662,7 +672,7 @@ describe('deepAnalysis', () => {
     const v = await deepAnalysis(boots([mod(MOVE, 25), mod(LIFE, 80)]), deps(client))
     expect(searches.map((q) => modIdsOf(q))).toEqual([[MOVE, LIFE], [MOVE, LIFE], [MOVE], []])
     expect(notIdsOf(searches[3])).toEqual([...notIdsOf(searches[2]), MOVE])
-    expect(v.contributions).toEqual([{ statId: MOVE, text: `text ${MOVE}`, deltaExalted: 40 }])
+    expect(contributionsOf(v)).toEqual([{ statId: MOVE, text: `text ${MOVE}`, deltaExalted: 40 }])
     expect(v.comparablesCount).toBe(12)
   })
 
@@ -872,5 +882,40 @@ describe('spreadSample', () => {
   it('n elementi equidistanti fra i primi min(length, 60), primo e ultimo inclusi', () => {
     expect(spreadSample(ids(22), 10)).toEqual([0, 2, 5, 7, 9, 12, 14, 16, 19, 21])
     expect(spreadSample(ids(100), 10)).toEqual([0, 7, 13, 20, 26, 33, 39, 46, 52, 59])
+  })
+})
+
+describe('deepAnalysis: stato degli affissi (R34)', () => {
+  it('tutti gli explicit nell ordine del testo, con tier, stato e contributo', async () => {
+    const mods = [
+      mod(DEX, 30, 'suffix', 6),
+      mod(LIFE, 80, 'prefix', 2),
+      mod('explicit.stat_691932474', 100, 'prefix'),
+      mod(FIRE_RES, 30, 'suffix', 4),
+      mod(MOVE, 25, 'prefix', 1)
+    ]
+    // con DEX la ricerca non trova abbastanza oggetti: DEX tolta dal rilassamento
+    const { client } = fakeClient((q) =>
+      modIdsOf(q).includes(DEX)
+        ? { total: 2, prices: [10, 20] }
+        : { total: 12, prices: range(12, () => 50) }
+    )
+    const v = await deepAnalysis(boots(mods), deps(client))
+    expect(v.mods?.map((m) => [m.statId, m.status, m.tier])).toEqual([
+      [DEX, 'relaxed', 6],
+      [LIFE, 'used', 2],
+      ['explicit.stat_691932474', 'unweighted', undefined],
+      [FIRE_RES, 'used', 4],
+      [MOVE, 'used', 1]
+    ])
+    expect(v.mods?.find((m) => m.statId === LIFE)?.deltaExalted).toBe(0)
+    expect(v.mods?.find((m) => m.statId === DEX)?.deltaExalted).toBeUndefined()
+  })
+
+  it('senza verdetto gli affissi ci sono lo stesso', async () => {
+    const { client } = fakeClient(() => ({ total: 0, prices: [] }))
+    const v = await deepAnalysis(boots([mod(MOVE, 25)]), deps(client))
+    expect(v.verdict).toBeNull()
+    expect(v.mods?.map((m) => m.status)).toEqual(['used'])
   })
 })

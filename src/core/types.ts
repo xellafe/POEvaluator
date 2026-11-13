@@ -70,6 +70,18 @@ export type ParseResult =
 export type Verdict = 'pessimo' | 'buono' | 'ottimo' | 'eccellente'
 export type Confidence = 'alta' | 'media' | 'bassa'
 
+/** Stato di un affisso nell'analisi approfondita (R34). */
+export type ModStatus = 'used' | 'dps' | 'unweighted' | 'relaxed'
+
+export interface DeepMod {
+  statId: string
+  text: string
+  tier?: number
+  status: ModStatus
+  /** Contributo in exalted (solo `used`). */
+  deltaExalted?: number
+}
+
 export interface Listing {
   id: string
   league: string
@@ -99,8 +111,23 @@ export interface Valuation {
    * exalted. `patient` (solo analisi approfondita, R32): prezzo "se puoi aspettare", presente
    * solo per Ottimo ed Eccellente quando supera il consigliato di almeno il 20%.
    */
-  price?: { suggested: number; min: number; max: number; patient?: number }
-  contributions?: { statId: string; text: string; deltaExalted: number }[]
+  price?: {
+    /** Analisi approfondita: "Vende subito" (10° percentile); valutatore rapido: prezzo consigliato. */
+    suggested: number
+    min: number
+    max: number
+    /** Solo deep: "Se puoi aspettare" (25° percentile). */
+    patient?: number
+    /** Solo deep: "Richiesta tipica" (mediana). */
+    typical?: number
+    /** Solo deep: prezzi puliti ordinati (al massimo 20), per la barra della distribuzione. */
+    sample?: number[]
+  }
+  /**
+   * Solo deep (R34): tutti gli explicit dell'oggetto nell'ordine del testo, con stato e, per
+   * quelli usati, il contributo (assente se non calcolato o nascosto per pochi prezzi).
+   */
+  mods?: DeepMod[]
   comparablesCount: number
   tradeUrl?: string
   /** Ricerche trade eseguite dall'analisi approfondita (solo deep). */

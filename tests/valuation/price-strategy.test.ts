@@ -178,26 +178,35 @@ describe('parityPriceFor (analisi approfondita, confronto alla pari)', () => {
   const steps = (n: number, from: number, step: number): number[] =>
     Array.from({ length: n }, (_, i) => from + i * step)
 
-  it('prezzo consigliato al 10° percentile, min al 5°, max al 50°, se puoi aspettare al 25° (R32)', () => {
-    // 40..230 (nessun outlier su scala log): p10 = 59, p5 = 49.5, p50 = 135, p25 = 87.5
+  it('vende subito al p10, se puoi aspettare al p25, richiesta tipica al p50; min p5, max p50 (R32, R34)', () => {
+    // 40..230: p10 = 59, p5 = 49.5, p50 = 135, p25 = 87.5
     const r = parityPriceFor(steps(20, 40, 10), T, { fullMatch: true })
-    expect(r.price).toEqual({ suggested: 59, min: 50, max: 135, patient: 88 })
+    expect(r.price).toEqual({
+      suggested: 59,
+      min: 50,
+      max: 135,
+      patient: 88,
+      typical: 135,
+      sample: steps(20, 40, 10)
+    })
     expect(r.verdict).toBe('ottimo')
     expect(r.comparablesCount).toBe(20)
   })
 
-  it('se puoi aspettare: solo se il p25 supera il consigliato di almeno il 20%', () => {
+  it('se puoi aspettare: sempre presente, anche se vicino al consigliato (R34)', () => {
     // 20 prezzi da 100 a 119: p10 = 101.9, p25 = 104.75 (+3%)
     const r = parityPriceFor(steps(20, 100, 1), T, { fullMatch: true })
     expect(r.verdict).toBe('ottimo')
-    expect(r.price?.patient).toBeUndefined()
+    expect(r.price?.patient).toBe(105)
+    expect(r.price?.typical).toBe(110)
   })
 
-  it('se puoi aspettare: solo per Ottimo ed Eccellente', () => {
-    // 10..48 (passo 2): p10 = 13.8 (Buono), p25 = 19.5
+  it('se puoi aspettare: per ogni verdetto con prezzo (R34)', () => {
+    // 10..48 (passo 2): p10 = 13.8 (Buono), p25 = 19.5 -> 20, p50 = 29
     const buono = parityPriceFor(steps(20, 10, 2), T, { fullMatch: true })
     expect(buono.verdict).toBe('buono')
-    expect(buono.price?.patient).toBeUndefined()
+    expect(buono.price?.patient).toBe(20)
+    expect(buono.price?.typical).toBe(29)
     // 300..1250 (passo 50): p10 = 395 (Eccellente), p25 = 537.5
     const ecc = parityPriceFor(steps(20, 300, 50), T, { fullMatch: true })
     expect(ecc.verdict).toBe('eccellente')
@@ -282,5 +291,17 @@ describe('parityPriceFor (analisi approfondita, confronto alla pari)', () => {
   it('scarta gli outlier prima dei percentili', () => {
     const r = parityPriceFor([10, 12, 14, 15, 16, 18, 20, 22, 25, 1000], T, { fullMatch: true })
     expect(r.comparablesCount).toBe(9)
+  })
+})
+
+describe('parityPriceFor: campione per la barra della distribuzione (R34)', () => {
+  it('prezzi puliti ordinati, al massimo 20 (equidistanti)', () => {
+    const prices = Array.from({ length: 30 }, (_, i) => 100 + i)
+    const r = parityPriceFor([...prices].reverse(), T, { fullMatch: true })
+    const sample = r.price?.sample ?? []
+    expect(sample).toHaveLength(20)
+    expect(sample[0]).toBe(100)
+    expect(sample[19]).toBe(129)
+    expect(sample).toEqual([...sample].sort((a, b) => a - b))
   })
 })

@@ -1,23 +1,8 @@
 import { maxAffixes } from '../parser/parse-item'
 import type { RareItem } from '../types'
-import rawWeights from './default-weights.json'
+import type { Weights } from './weights'
 
-export type Weights = Record<string, number>
-
-/** default-weights.json senza le chiavi di documentazione ("_comment", …). */
-export const DEFAULT_WEIGHTS: Readonly<Record<string, Weights>> = Object.fromEntries(
-  Object.entries(rawWeights as unknown as Record<string, unknown>).filter(
-    (entry): entry is [string, Weights] =>
-      !entry[0].startsWith('_') && typeof entry[1] === 'object' && entry[1] !== null
-  )
-)
-
-/** Pesi della classe trade, o undefined se la classe non è nella tabella. */
-export function weightsFor(itemClass: string): Weights | undefined {
-  return Object.prototype.hasOwnProperty.call(DEFAULT_WEIGHTS, itemClass)
-    ? DEFAULT_WEIGHTS[itemClass]
-    : undefined
-}
+export { DEFAULT_WEIGHTS, weightsFor, type Weights } from './weights'
 
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v))
 
