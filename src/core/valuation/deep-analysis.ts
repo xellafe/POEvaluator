@@ -4,7 +4,7 @@ import { buildQuery, indexedOptionFor, type QueryOptions } from '../trade/query-
 import { abortError, tradeUrl, type SearchResult, type TradeClient } from '../trade/trade-client'
 import { toListing } from '../trade/listing-mapper'
 import type { ItemMod, Listing, RareItem, Valuation } from '../types'
-import { weightsFor, type Weights } from './weights'
+import { modScore, modWeight, weightsFor, type Weights } from './weights'
 import { dpsCoverage, DPS_EPSILON, isAttackWeapon, modStatuses } from './mod-status'
 
 export { isAttackWeapon, LOCAL_DAMAGE_STATS } from './mod-status'
@@ -75,14 +75,13 @@ export const openSlotsWarning = (priceExalted: number): string =>
   `Gli oggetti simili con uno slot libero si vendono intorno a ${roundPrice(priceExalted)} ex`
 
 /**
- * Mod espliciti per peso decrescente (peso 0 se la stat non è in tabella); a parità il tier
- * migliore (numero più basso) prima, i mod senza tier in fondo. Ogni ItemMod è indipendente.
+ * Mod espliciti per punteggio decrescente (`modScore`: peso corretto dalla qualità del tier, R39);
+ * a parità il tier migliore (numero più basso) prima, i mod senza tier in fondo. Ogni ItemMod è
+ * indipendente.
  */
 export function sortModsByWeight(mods: ItemMod[], weights: Weights): ItemMod[] {
   const tier = (m: ItemMod): number => m.tier ?? Number.POSITIVE_INFINITY
-  return [...mods].sort(
-    (a, b) => (weights[b.statId] ?? 0) - (weights[a.statId] ?? 0) || tier(a) - tier(b)
-  )
+  return [...mods].sort((a, b) => modScore(b, weights) - modScore(a, weights) || tier(a) - tier(b))
 }
 
 /** Ingredienti della query "alla pari" di un oggetto (R31). */
@@ -111,7 +110,7 @@ export function parityPlan(item: RareItem): ParityPlan {
   const candidates = item.explicits.filter((m) => !coveredByDps(m.statId))
   const mods = weights
     ? sortModsByWeight(
-        candidates.filter((m) => (weights[m.statId] ?? 0) > 0),
+        candidates.filter((m) => modWeight(m, weights) > 0),
         weights
       )
     : candidates

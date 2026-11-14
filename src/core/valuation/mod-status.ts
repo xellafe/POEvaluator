@@ -1,7 +1,7 @@
 // Stato degli affissi nell'analisi approfondita (R34): quali entrano nella ricerca, quali sono
 // già nel DPS, quali sono esclusi. Senza dipendenze dal parser: lo usa anche il renderer.
 import type { DeepMod, RareItem } from '../types'
-import { weightsFor } from './weights'
+import { modWeight, weightsFor } from './weights'
 
 /** Sotto questo DPS un'arma non ha quel tipo di danno (arrotondamenti del testo). */
 export const DPS_EPSILON = 1
@@ -65,7 +65,7 @@ export function modStatuses(item: RareItem, removed: ReadonlySet<string> = new S
   return item.explicits.map((m) => {
     const status: DeepMod['status'] = coveredByDps(m.statId)
       ? 'dps'
-      : weights && (weights[m.statId] ?? 0) <= 0
+      : weights && modWeight(m, weights) <= 0
         ? 'unweighted'
         : removed.has(m.statId)
           ? 'relaxed'

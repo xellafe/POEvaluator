@@ -52,3 +52,12 @@ describe('modStatuses (R34)', () => {
     expect(modStatuses(item).every((m) => m.status === 'used')).toBe(true)
   })
 })
+
+describe('affissi senza peso di tier alto (R39)', () => {
+  it('T1 senza peso: usato, non escluso', () => {
+    const item = fixtureItem('rare-quarterstaff.txt')
+    const mana = item.explicits.find((m) => m.text === 'Gain 3 Mana per enemy killed')!
+    mana.tier = 1
+    expect(modStatuses(item).find((m) => m.statId === mana.statId)?.status).toBe('used')
+  })
+})

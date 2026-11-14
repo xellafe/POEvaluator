@@ -1195,3 +1195,27 @@ describe('tetto e prezzi del Pessimo (R38)', () => {
     expect(Math.min(...(v.found ?? []))).toBe(1)
   })
 })
+
+describe('tier negli affissi della ricerca (R39)', () => {
+  const REGEN = 'explicit.stat_3325883026'
+
+  it('affisso senza peso ma T1 (anche su 8 tier): entra nella ricerca per ultimo', () => {
+    const regen = { ...mod(REGEN, 19.6, 'suffix', 1), tierCount: 8 }
+    const plan = parityPlan(boots([mod(MOVE, 25), regen, mod(LIFE, 80)]))
+    expect(plan.mods.map((m) => m.statId)).toEqual([MOVE, LIFE, REGEN])
+  })
+
+  it('affisso senza peso e tier non alto (T3 di 9): resta escluso', () => {
+    const regen = { ...mod(REGEN, 10, 'suffix', 3), tierCount: 9 }
+    const plan = parityPlan(boots([mod(MOVE, 25), regen]))
+    expect(plan.mods.map((m) => m.statId)).toEqual([MOVE])
+  })
+
+  it('a pesi simili il tier peggiore esce prima', () => {
+    // FIRE_RES e COLD_RES hanno lo stesso peso: il T8 di 8 va dopo il T1 di 8
+    const fire = { ...mod(FIRE_RES, 10, 'suffix', 8), tierCount: 8 }
+    const cold = { ...mod(COLD_RES, 40, 'suffix', 1), tierCount: 8 }
+    const plan = parityPlan(boots([fire, cold]))
+    expect(plan.mods.map((m) => m.statId)).toEqual([COLD_RES, FIRE_RES])
+  })
+})
