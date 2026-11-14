@@ -454,6 +454,10 @@ kbd {
   font-size: 12px;
   line-height: 1.4;
 }
+.p-uncertain-why a {
+  color: var(--accent);
+  white-space: nowrap;
+}
 /* distribuzione dei prezzi del campione su scala log, con i marcatori p10/p25/p50 */
 .p-dist {
   position: relative;

@@ -8,6 +8,7 @@ import {
   priceParts,
   similarCount,
   formatRange,
+  ceilingText,
   tierBand,
   tierTitle,
   foundPrices,
@@ -223,5 +224,16 @@ describe('modStatusTitle (R34)', () => {
     expect(modStatusTitle('relaxed')).toBe('Tolto dalla ricerca: pochi oggetti simili')
     expect(modStatusTitle('used')).toBeUndefined()
     expect(modStatusTitle('dps')).toBeUndefined()
+  })
+})
+
+describe('ceilingText (R38)', () => {
+  it('singolare e plurale, prezzo breve', () => {
+    expect(ceilingText(1, 420, 640)).toBe(
+      "C'è 1 oggetto con gli stessi affissi e altri in più, da 420 ex: il tuo probabilmente vale di meno."
+    )
+    expect(ceilingText(8, 1280, 640)).toBe(
+      'Ci sono 8 oggetti con gli stessi affissi e altri in più, da 2 div: il tuo probabilmente vale di meno.'
+    )
   })
 })

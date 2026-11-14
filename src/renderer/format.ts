@@ -52,6 +52,22 @@ export function foundPrices(sample: number[], exaltedPerDivine: number | null): 
   return `${lo} – ${hi}`
 }
 
+/**
+ * Spiegazione del tetto di prezzo (R38): gli oggetti con gli stessi affissi e altri in più
+ * valgono almeno quanto l'oggetto, quindi il loro prezzo più basso è un limite superiore.
+ */
+export function ceilingText(
+  count: number,
+  exalted: number,
+  exaltedPerDivine: number | null
+): string {
+  const what = count === 1 ? "C'è 1 oggetto" : `Ci sono ${count} oggetti`
+  return (
+    `${what} con gli stessi affissi e altri in più, da ${shortPrice(exalted, exaltedPerDivine)}: ` +
+    'il tuo probabilmente vale di meno.'
+  )
+}
+
 /** Spiegazione di una stima incerta dai motivi del core: "Solo 3 oggetti simili in vendita: …". */
 export function uncertainText(reasons: string[]): string {
   const s = reasons.join(', ')

@@ -9,6 +9,7 @@ import {
   distributionLayout,
   formatDelta,
   formatPrice,
+  ceilingText,
   foundPrices,
   itemClassLabel,
   modStatusTitle,
@@ -374,6 +375,33 @@ function Done({
                 p50={v.price.typical ?? v.price.suggested}
               />
             )}
+          </>
+        )}
+        {/* Pessimo: niente prezzo consigliato, ma i prezzi trovati (R38) */}
+        {v.verdict === 'pessimo' && v.found && v.found.length > 0 && (
+          <div className="p-found">
+            <span className="lbl">Prezzi trovati</span>
+            <span className="val">{foundPrices(v.found, exaltedPerDivine)}</span>
+          </div>
+        )}
+        {/* Dati insufficienti: tetto dagli oggetti con gli stessi affissi e altri in più (R38) */}
+        {v.verdict === null && v.ceiling && (
+          <>
+            <div className="p-found">
+              <span className="lbl">Vale al massimo circa</span>
+              <span className="val">{formatPrice(v.ceiling.exalted, exaltedPerDivine)}</span>
+            </div>
+            <div className="p-uncertain-why">
+              {ceilingText(v.ceiling.count, v.ceiling.exalted, exaltedPerDivine)}
+              {v.ceiling.tradeUrl && (
+                <>
+                  {' '}
+                  <a href={v.ceiling.tradeUrl} target="_blank" rel="noreferrer">
+                    Vedili sul trade
+                  </a>
+                </>
+              )}
+            </div>
           </>
         )}
         <dl className="p-stats">

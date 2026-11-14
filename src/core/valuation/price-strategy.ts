@@ -1,7 +1,10 @@
 import type { Settings } from '../settings'
 import type { Confidence, Valuation, Verdict } from '../types'
 
-type Result = Pick<Valuation, 'verdict' | 'confidence' | 'price' | 'comparablesCount' | 'warnings'>
+type Result = Pick<
+  Valuation,
+  'verdict' | 'confidence' | 'price' | 'comparablesCount' | 'warnings' | 'found'
+>
 
 /** Percentile con interpolazione lineare (R-7). `sorted` deve essere ordinato crescente e non vuoto. */
 export function percentile(sorted: number[], p: number): number {
@@ -129,7 +132,7 @@ const PARITY_MEDIUM_COUNT = 6
 const CHART_SAMPLE = 20
 
 /** Fino a CHART_SAMPLE prezzi (ordinati) equidistanti fra quelli puliti, primo e ultimo inclusi. */
-function sampleForChart(sorted: number[]): number[] {
+export function sampleForChart(sorted: number[]): number[] {
   if (sorted.length <= CHART_SAMPLE) return [...sorted]
   const m = sorted.length
   return Array.from(
@@ -172,6 +175,8 @@ export function parityPriceFor(
     comparablesCount: clean.length,
     warnings: verdict === 'eccellente' && confidence !== 'alta' ? [EXCEPTIONAL_WARNING] : []
   }
+  // Pessimo: nessun prezzo consigliato, solo i prezzi trovati (R38)
+  if (verdict === 'pessimo') result.found = sampleForChart(clean)
   if (verdict !== 'pessimo') {
     result.price = {
       suggested,

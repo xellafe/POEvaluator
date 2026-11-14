@@ -13,7 +13,8 @@ import {
   MIN_PARITY_PRICES,
   parityPriceFor,
   percentile,
-  roundPrice
+  roundPrice,
+  sampleForChart
 } from './price-strategy'
 
 export interface DeepDeps {
@@ -29,6 +30,9 @@ export interface DeepDeps {
 }
 
 export const DEFAULT_MAX_SEARCHES = 8
+
+/** Prezzi scaricati per la ricerca del tetto (R38). */
+export const CEILING_FETCH = 10
 /** Fattore dei valori dei mod nella query base. */
 const VALUE_FACTOR = 0.8
 /** Fattore del DPS nella query base. */
@@ -142,6 +146,8 @@ export interface ParityStep {
   extraExclude?: string[]
   /** Lato con uno slot libero in più (controllo degli slot liberi). */
   openSlotSide?: 'prefix' | 'suffix'
+  /** Senza gruppo not: oggetti con gli stessi affissi e altri in più (ricerca del tetto, R38). */
+  noExclude?: boolean
 }
 
 /** Opzioni di buildQuery per la query alla pari (base o variante). */
@@ -154,7 +160,7 @@ export function parityQueryOptions(
   const opts: QueryOptions = {
     mods: step.mods ?? plan.mods,
     valueFactor: step.valueFactor ?? VALUE_FACTOR,
-    exclude: [...plan.exclude, ...(step.extraExclude ?? [])],
+    exclude: step.noExclude ? [] : [...plan.exclude, ...(step.extraExclude ?? [])],
     indexed: indexedOptionFor(settings.maxListingAgeDays),
     collapse: true
   }
@@ -342,6 +348,34 @@ export async function deepAnalysis(
   if (priced.verdict === null) {
     // meno di 3 prezzi: nessun verdetto, solo la spiegazione
     result.warnings = [priced.comparablesCount === 0 ? DEEP_NO_DATA_MESSAGE : DEEP_FEW_DATA_MESSAGE]
+    // tetto (R38): oggetti con tutti gli affissi dell'oggetto (valori ×0.6) e altri in più,
+    // quindi di valore almeno pari; se non ce ne sono, con i soli affissi rimasti dopo il
+    // rilassamento. Senza gruppo not (classe senza pesi) sarebbe la stessa ricerca: niente tetto.
+    if (plan.exclude.length > 0) {
+      const steps: ParityStep[] = [
+        { mods: plan.mods, valueFactor: RELAXED_FACTOR, dpsFactor: RELAXED_FACTOR, noExclude: true }
+      ]
+      if (queryMods.length < plan.mods.length) {
+        steps.push({ ...current(), noExclude: true })
+      }
+      for (const step of steps) {
+        if (!budgetLeft()) break
+        const r = await search(step)
+        if (r.total === 0) continue
+        const clean = cleanParityPrices(await fetchPrices(r, CEILING_FETCH)).sort((a, b) => a - b)
+        if (clean.length === 0) continue
+        result.ceiling = {
+          exalted: roundPrice(
+            clean.length >= MIN_PARITY_PRICES ? percentile(clean, 0.1) : clean[0]
+          ),
+          count: clean.length,
+          sample: sampleForChart(clean),
+          tradeUrl: tradeUrl(settings.league, r.id)
+        }
+        break
+      }
+      result.searches = count()
+    }
     return result
   }
 

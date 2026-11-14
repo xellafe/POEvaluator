@@ -488,6 +488,78 @@ const PANELS: [string, PanelState][] = [
         ]
       })
     }
+  ],
+  [
+    'Pessimo · prezzi trovati',
+    {
+      item: WEAPON,
+      quick: v({ verdict: 'buono', price: { suggested: 15, min: 8, max: 30 } }),
+      exaltedPerDivine: 640,
+      progress: { done: 1, total: 8 },
+      result: v({
+        verdict: 'pessimo',
+        confidence: 'alta',
+        comparablesCount: 15,
+        found: [1, 1, 2, 2, 2, 3, 3, 4, 5, 8, 12, 20, 35, 60, 120],
+        searches: 1,
+        tradeUrl: 'https://www.pathofexile.com/trade2/search/poe2/Standard/jkl',
+        mods: [
+          {
+            statId: 'explicit.stat_1037193709',
+            text: 'Adds 54 to 82 Cold Damage',
+            tier: 4,
+            tierCount: 10,
+            status: 'dps'
+          },
+          {
+            statId: 'explicit.stat_1509134228',
+            text: '51% increased Physical Damage',
+            tier: 4,
+            tierCount: 8,
+            status: 'dps'
+          }
+        ]
+      })
+    }
+  ],
+  [
+    'Dati insufficienti · tetto',
+    {
+      item: { ...ITEM, itemClass: 'weapon.staff', name: 'Loath Spell', baseType: 'Roaring Staff' },
+      quick: QUICK,
+      exaltedPerDivine: 640,
+      progress: { done: 6, total: 8 },
+      result: v({
+        verdict: null,
+        confidence: 'bassa',
+        comparablesCount: 1,
+        searches: 6,
+        warnings: ['Troppo pochi oggetti simili in vendita per una stima'],
+        ceiling: {
+          exalted: 420,
+          count: 8,
+          sample: [380, 420, 640, 900, 1280, 1920, 3200, 6400],
+          tradeUrl: 'https://www.pathofexile.com/trade2/search/poe2/Standard/mno'
+        },
+        tradeUrl: 'https://www.pathofexile.com/trade2/search/poe2/Standard/pqr',
+        mods: [
+          {
+            statId: 'explicit.stat_1050105434',
+            text: '+185 to maximum Mana',
+            tier: 4,
+            tierCount: 11,
+            status: 'relaxed'
+          },
+          {
+            statId: 'explicit.stat_2254480358',
+            text: '+3 to Level of all Cold Spell Skills',
+            tier: 3,
+            tierCount: 5,
+            status: 'used'
+          }
+        ]
+      })
+    }
   ]
 ]
 

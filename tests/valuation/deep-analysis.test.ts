@@ -408,11 +408,15 @@ describe('deepAnalysis', () => {
   it('il rilassamento non tocca mai il gruppo not né i vincoli sugli slot', async () => {
     const { client, searches } = fakeClient(() => ({ total: 1, prices: [10] }))
     await deepAnalysis(boots(fourMods(), { openPrefixes: 0, openSuffixes: 0 }), deps(client))
-    expect(searches.length).toBe(5)
-    for (const q of searches) {
+    // 5 ricerche di rilassamento, poi quella del tetto (R38)
+    expect(searches.length).toBe(6)
+    for (const q of searches.slice(0, 5)) {
       expect(notIdsOf(q)).toEqual(BOOTS_NOT)
       expect(fullSlotsOf(q)).toEqual([EMPTY_PREFIX_STAT_ID, EMPTY_SUFFIX_STAT_ID])
     }
+    // il tetto toglie solo il gruppo not: gli slot pieni restano
+    expect(notIdsOf(searches[5])).toEqual([])
+    expect(fullSlotsOf(searches[5])).toEqual([EMPTY_PREFIX_STAT_ID, EMPTY_SUFFIX_STAT_ID])
   })
 
   it('non rilassa oltre un mod', async () => {
@@ -423,7 +427,9 @@ describe('deepAnalysis', () => {
       [MOVE, LIFE, FIRE_RES, DEX],
       [MOVE, LIFE, FIRE_RES],
       [MOVE, LIFE],
-      [MOVE]
+      [MOVE],
+      // tetto (R38): tutti gli affissi, senza gruppo not
+      [MOVE, LIFE, FIRE_RES, DEX]
     ])
   })
 
@@ -431,8 +437,9 @@ describe('deepAnalysis', () => {
     const item = fixtureItem('rare-quarterstaff.txt')
     const { client, searches } = fakeClient(() => ({ total: 1, prices: [10] }))
     await deepAnalysis(item, deps(client))
-    // nessun mod con peso: base e valori a ×0.6, poi niente da togliere
-    expect(searches.length).toBe(2)
+    // nessun mod con peso: base e valori a ×0.6, poi niente da togliere; poi il tetto (R38)
+    expect(searches.length).toBe(3)
+    expect(notIdsOf(searches[2])).toEqual([])
     expect((searches[1] as Query).query.filters.equipment_filters).toEqual({
       filters: { pdps: { min: 70 }, edps: { min: 53 } }
     })
@@ -583,8 +590,10 @@ describe('deepAnalysis', () => {
       boots([mod(MOVE, 25)], { openPrefixes: 0, openSuffixes: 0 }),
       deps(client)
     )
-    // base + valori a ×0.6; con un solo mod non si toglie altro
-    expect(searches.length).toBe(2)
+    // base + valori a ×0.6; con un solo mod non si toglie altro; poi il tetto (R38)
+    expect(searches.length).toBe(3)
+    expect(v.ceiling).toMatchObject({ exalted: 100, count: 2, sample: [100, 120] })
+    expect(v.searches).toBe(3)
     expect(v.verdict).toBeNull()
     expect(v.price).toBeUndefined()
     expect(v.confidence).toBe('bassa')
@@ -1131,5 +1140,58 @@ describe('contributi su richiesta (R37)', () => {
     expect(searches).toHaveLength(2)
     // base (12) + primo contributo (10)
     expect(store.countByClass('Standard')['armour.boots']).toBe(22)
+  })
+})
+
+describe('tetto e prezzi del Pessimo (R38)', () => {
+  it('tetto: con tutti gli affissi senza risultati riprova con quelli rimasti', async () => {
+    const { client, searches } = fakeClient((q) =>
+      notIdsOf(q).length === 0 && modIdsOf(q).length === 4
+        ? { total: 0, prices: [] }
+        : notIdsOf(q).length === 0
+          ? { total: 12, prices: [40, 60, 80, 100, 150, 200, 300, 400, 500, 900] }
+          : { total: 1, prices: [10] }
+    )
+    const v = await deepAnalysis(boots(fourMods()), deps(client))
+    expect(v.verdict).toBeNull()
+    expect(searches.slice(-2).map((q) => modIdsOf(q))).toEqual([
+      [MOVE, LIFE, FIRE_RES, DEX],
+      [MOVE]
+    ])
+    expect(v.ceiling?.count).toBe(10)
+    expect(v.ceiling?.exalted).toBe(58)
+    expect(v.ceiling?.tradeUrl).toMatch(/^https:\/\/www\.pathofexile\.com\/trade2\/search\//)
+  })
+
+  it('tetto: nessun oggetto nemmeno senza il gruppo not → nessun tetto', async () => {
+    const { client } = fakeClient((q) =>
+      notIdsOf(q).length === 0 ? { total: 0, prices: [] } : { total: 1, prices: [10] }
+    )
+    const v = await deepAnalysis(boots(fourMods()), deps(client))
+    expect(v.verdict).toBeNull()
+    expect(v.ceiling).toBeUndefined()
+  })
+
+  it('tetto: rispetta il budget di ricerche', async () => {
+    const { client, searches } = fakeClient(() => ({ total: 1, prices: [10] }))
+    const v = await deepAnalysis(boots(fourMods()), deps(client, { maxSearches: 5 }))
+    expect(searches.length).toBe(5)
+    expect(v.ceiling).toBeUndefined()
+  })
+
+  it('tetto: classe senza pesi (nessun gruppo not) → nessuna ricerca in più', async () => {
+    const { client, searches } = fakeClient(() => ({ total: 1, prices: [10] }))
+    const v = await deepAnalysis(boots([mod(MOVE, 25)], { itemClass: 'flask.charm' }), deps(client))
+    expect(searches.length).toBe(2)
+    expect(v.ceiling).toBeUndefined()
+  })
+
+  it('Pessimo: nessun prezzo consigliato ma i prezzi trovati', async () => {
+    const { client } = fakeClient(() => ({ total: 20, prices: range(20, (i) => 1 + (i % 4)) }))
+    const v = await deepAnalysis(boots(fourMods()), deps(client))
+    expect(v.verdict).toBe('pessimo')
+    expect(v.price).toBeUndefined()
+    expect(v.found?.length).toBeGreaterThan(0)
+    expect(Math.min(...(v.found ?? []))).toBe(1)
   })
 })

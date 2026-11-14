@@ -137,6 +137,17 @@ export interface Valuation {
    * affissi), in minuscolo per comporli in una frase. Assente se la stima è solida o non c'è.
    */
   uncertain?: string[]
+  /**
+   * Solo deep, verdetto Pessimo (R38): prezzi trovati (puliti, ordinati, al massimo 20), per far
+   * vedere perché è Pessimo senza dare un prezzo consigliato.
+   */
+  found?: number[]
+  /**
+   * Solo deep, verdetto null (R38): tetto di prezzo dagli oggetti con gli stessi affissi e
+   * altri in più (ricerca senza il gruppo not). `exalted`: 10° percentile, o il prezzo più basso
+   * con meno di 3 prezzi.
+   */
+  ceiling?: { exalted: number; count: number; sample: number[]; tradeUrl?: string }
   comparablesCount: number
   tradeUrl?: string
   /** Ricerche trade eseguite dall'analisi approfondita (solo deep). */

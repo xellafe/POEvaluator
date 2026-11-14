@@ -222,10 +222,11 @@ describe('parityPriceFor (analisi approfondita, confronto alla pari)', () => {
     expect(r.price?.suggested).toBe(25)
   })
 
-  it('Pessimo: nessun prezzo (decisione utente del Task 13)', () => {
+  it('Pessimo: nessun prezzo (decisione utente del Task 13), solo i prezzi trovati (R38)', () => {
     const r = parityPriceFor([1, 2, 2, 3, 4, 5], T, { fullMatch: true })
     expect(r.verdict).toBe('pessimo')
     expect(r.price).toBeUndefined()
+    expect(r.found).toEqual([1, 2, 2, 3, 4, 5])
   })
 
   it('meno di 3 prezzi puliti: nessun verdetto', () => {
