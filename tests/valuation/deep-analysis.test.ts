@@ -228,11 +228,13 @@ describe('deepAnalysis: query base alla pari', () => {
     expect(modIdsOf(q)).toEqual([])
     expect(allIds).not.toContain('stat_691932474')
     expect(allIds).not.toContain('stat_791928121')
-    // stat di valore assenti: livelli melee (0.9), critico locale (0.6), danno critico (0.4)
+    // stat di valore assenti: livelli melee (0.9), critico locale (0.6), danno critico locale
+    // (0.4), efficienza della riserva di spirito (0.4)
     expect(notIdsOf(q)).toEqual([
       'explicit.stat_9187492',
       'explicit.stat_518292764',
-      'explicit.stat_3556824919'
+      'explicit.stat_2694482655',
+      'explicit.stat_53386210'
     ])
     // 3 prefix (pieni), 2 suffix (uno libero)
     expect(pseudoOf(q)).toEqual([])
@@ -267,8 +269,8 @@ describe('deepAnalysis: query base alla pari', () => {
       { id: 'explicit.stat_1050105434', value: { min: 148 } },
       { id: 'explicit.stat_328541901', value: { min: 19 } }
     ])
-    // stat di valore assenti: Spell 1, Spell Damage 0.8, livelli per elemento 0.7, critico 0.5,
-    // danno critico 0.4
+    // stat di valore assenti (le prime 12): Spell 1, Spell Damage 0.8, livelli per elemento 0.7,
+    // critico 0.5, poi a 0.4 danno critico, gain-as-extra e danno da fuoco
     expect(notIdsOf(q)).toEqual([
       'explicit.stat_124131830',
       'explicit.stat_2974417149',
@@ -277,7 +279,11 @@ describe('deepAnalysis: query base alla pari', () => {
       'explicit.stat_4226189338',
       'explicit.stat_1600707273',
       'explicit.stat_737908626',
-      'explicit.stat_274716455'
+      'explicit.stat_274716455',
+      'explicit.stat_3015669065',
+      'explicit.stat_2505884597',
+      'explicit.stat_3278136794',
+      'explicit.stat_3962278098'
     ])
     expect(pseudoOf(q)).toEqual([])
     expect(fullSlotsOf(q)).toEqual([EMPTY_SUFFIX_STAT_ID])
@@ -293,9 +299,11 @@ describe('deepAnalysis: query base alla pari', () => {
       { id: 'explicit.stat_328541901', value: { min: 8 } }
     ])
     const not = notIdsOf(q)
+    // "# to Spirit" non è un affisso degli scettri (è della base): in testa l'aumento % di spirito
+    // (con il suo id alternativo), poi i livelli dei minion
     expect(not.slice(0, 3)).toEqual([
-      'explicit.stat_2704225257',
-      'explicit.stat_3981240776',
+      'explicit.stat_1416406066',
+      'explicit.stat_3984865854',
       'explicit.stat_2162097452'
     ])
     for (const id of [
@@ -303,9 +311,7 @@ describe('deepAnalysis: query base alla pari', () => {
       'explicit.stat_2854751904',
       'explicit.stat_1574590649',
       'explicit.stat_1798257884',
-      'explicit.stat_1998951374',
-      'explicit.stat_262946222',
-      'explicit.stat_2901986750'
+      'explicit.stat_1998951374'
     ]) {
       expect(not).toContain(id)
     }
@@ -372,12 +378,11 @@ describe('deepAnalysis: query base alla pari', () => {
   })
 
   it('il gruppo not ha al massimo 12 stat, per peso decrescente', () => {
-    // scettro senza mod: le 12 stat con peso >= 0.4 della tabella entrano tutte (con il limite
-    // di 10 le due da 0.4 restavano fuori)
-    const item = boots([], { itemClass: 'weapon.sceptre' })
+    // bastone senza mod: 17 stat con peso >= 0.4 in tabella, ne entrano le prime 12
+    const item = boots([], { itemClass: 'weapon.staff' })
     const plan = parityPlan(item)
     expect(plan.exclude).toHaveLength(12)
-    expect(plan.exclude[0]).toBe('explicit.stat_2704225257')
+    expect(plan.exclude[0]).toBe('explicit.stat_124131830')
   })
 
   it('classe senza pesi: tutti i mod nella query, nessun gruppo not', () => {
@@ -1198,16 +1203,24 @@ describe('tetto e prezzi del Pessimo (R38)', () => {
 
 describe('tier negli affissi della ricerca (R39)', () => {
   const REGEN = 'explicit.stat_3325883026'
+  const LIGHT_RADIUS = 'explicit.stat_1263695895'
 
   it('affisso senza peso ma T1 (anche su 8 tier): entra nella ricerca per ultimo', () => {
-    const regen = { ...mod(REGEN, 19.6, 'suffix', 1), tierCount: 8 }
-    const plan = parityPlan(boots([mod(MOVE, 25), regen, mod(LIFE, 80)]))
-    expect(plan.mods.map((m) => m.statId)).toEqual([MOVE, LIFE, REGEN])
+    const light = { ...mod(LIGHT_RADIUS, 25, 'suffix', 1), tierCount: 8 }
+    const plan = parityPlan(boots([mod(MOVE, 25), light, mod(LIFE, 80)]))
+    expect(plan.mods.map((m) => m.statId)).toEqual([MOVE, LIFE, LIGHT_RADIUS])
+  })
+
+  it('la rigenerazione della vita ha un peso sugli stivali (affisso mancante nella prova in gioco)', () => {
+    const regen = { ...mod(REGEN, 19.6, 'suffix', 6), tierCount: 8 }
+    const plan = parityPlan(boots([mod(MOVE, 25), regen]))
+    expect(plan.mods.map((m) => m.statId)).toEqual([MOVE, REGEN])
   })
 
   it('affisso senza peso e tier non alto (T3 di 9): resta escluso', () => {
-    const regen = { ...mod(REGEN, 10, 'suffix', 3), tierCount: 9 }
-    const plan = parityPlan(boots([mod(MOVE, 25), regen]))
+    // raggio di luce: senza peso sugli stivali
+    const light = { ...mod(LIGHT_RADIUS, 15, 'suffix', 3), tierCount: 9 }
+    const plan = parityPlan(boots([mod(MOVE, 25), light]))
     expect(plan.mods.map((m) => m.statId)).toEqual([MOVE])
   })
 
