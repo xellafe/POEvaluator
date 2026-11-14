@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS } from '../../src/core/settings'
 import {
+  cleanParityPrices,
   cleanPrices,
   confidenceFor,
   parityPriceFor,
@@ -304,5 +305,22 @@ describe('parityPriceFor: campione per la barra della distribuzione (R34)', () =
     expect(sample[0]).toBe(100)
     expect(sample[19]).toBe(129)
     expect(sample).toEqual([...sample].sort((a, b) => a - b))
+  })
+})
+
+describe('cleanParityPrices: prezzi oltre 50 volte la mediana (R39)', () => {
+  it('toglie le richieste per scherzo anche quando Tukey non ci arriva', () => {
+    // dalla prova in gioco del 2026-11-14
+    expect(cleanParityPrices([1, 2, 5.5676448, 10, 2793.68775, 29297.1, 187221024.9])).toEqual([
+      1, 2, 5.5676448, 10
+    ])
+  })
+
+  it('anche con 3 prezzi', () => {
+    expect(cleanParityPrices([1, 2, 1000])).toEqual([1, 2])
+  })
+
+  it('una distribuzione larga ma credibile resta intera', () => {
+    expect(cleanParityPrices([30, 640, 6400])).toEqual([30, 640, 6400])
   })
 })

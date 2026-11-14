@@ -98,6 +98,9 @@ export function priceFor(prices: number[], t: Settings['thresholds']): Result {
 /** Prezzi puliti minimi per dare un verdetto nell'analisi approfondita. */
 export const MIN_PARITY_PRICES = 3
 
+/** Oltre questo multiplo della mediana un prezzo è scartato sempre (R39). */
+export const MAX_MEDIAN_RATIO = 50
+
 /** IQR minimo (su log) sotto il quale la pulizia non scarta nulla. */
 const MIN_LOG_IQR = Math.log(1.1)
 
@@ -112,7 +115,12 @@ const MIN_LOG_IQR = Math.log(1.1)
  */
 
 export function cleanParityPrices(pricesExalted: number[]): number[] {
-  const sorted = pricesExalted.filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
+  const valid = pricesExalted.filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b)
+  if (valid.length === 0) return valid
+  // prezzi oltre MAX_MEDIAN_RATIO volte la mediana (R39): richieste per scherzo o price fixing,
+  // che con pochi prezzi allargano tanto l'IQR da sfuggire a Tukey
+  const cap = percentile(valid, 0.5) * MAX_MEDIAN_RATIO
+  const sorted = valid.filter((v) => v <= cap)
   if (sorted.length < 4) return sorted
   const logs = sorted.map(Math.log)
   const q1 = percentile(logs, 0.25)
