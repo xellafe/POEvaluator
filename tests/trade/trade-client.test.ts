@@ -9,6 +9,8 @@ import {
 } from '../../src/core/trade/trade-client'
 
 const UA = 'POEvaluator/0.1.0 (+test)'
+/** I test dello scheduler non misurano la distanza minima tra richieste (testata a parte). */
+const NO_GAP = { user: 0, background: 0 }
 
 type Call = { url: string; init: RequestInit }
 
@@ -41,7 +43,7 @@ afterEach(() => {
 describe('TradeClient', () => {
   it('search: POST sulla lega codificata con body JSON', async () => {
     const f = makeFetch(() => json({ id: 'q1', result: ['a', 'b'], total: 2 }))
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const res = await client.search('Rise of the Abyssal', { query: {} }, 'user')
     expect(res).toEqual({ id: 'q1', result: ['a', 'b'], total: 2 })
     expect(f.calls[0].url).toBe(
@@ -55,7 +57,7 @@ describe('TradeClient', () => {
     const f = makeFetch((c) =>
       c.init.method === 'POST' ? json(emptySearch) : json({ result: [] })
     )
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     await client.search('Standard', {}, 'user')
     await client.fetchListings(['a'], 'q', 'user')
     expect(f.calls).toHaveLength(2)
@@ -69,7 +71,7 @@ describe('TradeClient', () => {
       const ids = c.url.split('/fetch/')[1].split('?')[0].split(',')
       return json({ result: ids.map((id) => ({ id })) })
     })
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const ids = Array.from({ length: 23 }, (_, i) => `id${i}`)
     const out = await client.fetchListings(ids, 'QID', 'user')
     expect(f.calls).toHaveLength(3)
@@ -82,7 +84,7 @@ describe('TradeClient', () => {
 
   it('fetchListings senza id non fa richieste', async () => {
     const f = makeFetch(() => json({ result: [] }))
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     expect(await client.fetchListings([], 'q', 'user')).toEqual([])
     expect(f.calls).toHaveLength(0)
   })
@@ -93,7 +95,7 @@ describe('TradeClient', () => {
       order.push(JSON.parse(String(c.init.body)).tag)
       return json(emptySearch)
     })
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const p1 = client.search('Standard', { tag: 'background' }, 'background')
     const p2 = client.search('Standard', { tag: 'stash' }, 'stash')
     const p3 = client.search('Standard', { tag: 'user' }, 'user')
@@ -109,7 +111,7 @@ describe('TradeClient', () => {
         ? json({ error: 'rate' }, 429, { 'Retry-After': '2' })
         : json({ id: 'q', result: ['x'], total: 1 })
     )
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const p = client.search('Standard', {}, 'user')
     await vi.advanceTimersByTimeAsync(1999)
     expect(f.calls).toHaveLength(1)
@@ -133,6 +135,7 @@ describe('TradeClient', () => {
     )
     const seen: string[] = []
     const client = new TradeClient({
+      requestGapMs: NO_GAP,
       userAgent: UA,
       fetchImpl: f.impl,
       onRateLimited: (kind, attempt, headers) => seen.push(`${kind}:${attempt} ${headers}`)
@@ -157,6 +160,7 @@ describe('TradeClient', () => {
     const seen: string[] = []
     const rateLimited: string[] = []
     const client = new TradeClient({
+      requestGapMs: NO_GAP,
       userAgent: UA,
       fetchImpl: f.impl,
       onRestriction: (kind, headers) => seen.push(`${kind} ${headers}`),
@@ -174,7 +178,7 @@ describe('TradeClient', () => {
 
   it('dopo 3 ripetizioni su 429 rifiuta con un errore chiaro', async () => {
     const f = makeFetch(() => json({}, 429, { 'Retry-After': '1' }))
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const p = client.search('Standard', {}, 'user')
     const assertion = expect(p).rejects.toThrow(/429/)
     await vi.advanceTimersByTimeAsync(10_000)
@@ -184,7 +188,7 @@ describe('TradeClient', () => {
 
   it('un errore HTTP non-429 rifiuta subito con status e corpo', async () => {
     const f = makeFetch(() => new Response('Bad query: boom', { status: 400 }))
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     await expect(client.search('Standard', {}, 'user')).rejects.toThrow(/400.*Bad query: boom/)
     expect(f.calls).toHaveLength(1)
   })
@@ -197,7 +201,7 @@ describe('TradeClient', () => {
         'X-Rate-Limit-Ip-State': '1:10:0'
       })
     )
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     await client.search('Standard', {}, 'user')
     const p = client.search('Standard', {}, 'user')
     await vi.advanceTimersByTimeAsync(100)
@@ -209,7 +213,7 @@ describe('TradeClient', () => {
 
   it('isIdle: falso con richieste user/stash in coda o in volo, vero con solo background', async () => {
     const f = makeFetch(() => json(emptySearch))
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     expect(client.isIdle()).toBe(true)
     const bg = client.search('Standard', {}, 'background')
     expect(client.isIdle()).toBe(true)
@@ -231,7 +235,7 @@ describe('TradeClient', () => {
         ? json({ id: 'q', result: ['a'], total: 1 }, 200, rate(5))
         : json({ result: [] }, 200, rate(8))
     )
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     expect(client.remainingRatio()).toBe(1)
     await client.search('Standard', {}, 'user')
     expect(client.remainingRatio()).toBeCloseTo(0.5)
@@ -253,7 +257,7 @@ describe('TradeClient', () => {
             'X-Rate-Limit-Ip-State': '1:10:90'
           })
     )
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     expect(client.blockedForMs()).toBe(0)
     await client.search('Standard', {}, 'user')
     expect(client.blockedForMs()).toBe(0)
@@ -268,7 +272,7 @@ describe('timeout', () => {
     const f = makeFetch((_c, n) =>
       n === 1 ? new Promise<Response>(() => {}) : json({ id: 'q', result: ['ok'], total: 1 })
     )
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const p1 = client.search('Standard', {}, 'user')
     const a1 = expect(p1).rejects.toThrow(/timeout/)
     const p2 = client.search('Standard', {}, 'user')
@@ -297,7 +301,7 @@ describe('tradeUrl', () => {
         ]
       })
     )
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const p = client.leagues('user')
     await vi.advanceTimersByTimeAsync(0)
     expect(await p).toEqual(['Runes of Aldur', 'Standard'])
@@ -329,6 +333,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
       c.init.method === 'POST' ? json({ id: 'q', result: ['u'], total: 1 }) : json({ result: [] })
     )
     const client = new TradeClient({
+      requestGapMs: NO_GAP,
       userAgent: UA,
       fetchImpl: f.impl,
       limiters: { fetch: saturated(60) }
@@ -351,6 +356,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
         : json({ result: [] })
     )
     const client = new TradeClient({
+      requestGapMs: NO_GAP,
       userAgent: UA,
       fetchImpl: f.impl,
       limiters: { fetch: saturated(120) }
@@ -373,7 +379,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
         ? json({}, 429, { 'Retry-After': '60' })
         : json({ id: 'q', result: ['s'], total: 1 })
     })
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const s1 = client.search('Standard', {}, 'stash')
     await vi.advanceTimersByTimeAsync(10)
     expect(f.calls).toHaveLength(1)
@@ -400,7 +406,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
           })
         : json(emptySearch)
     )
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     await client.fetchListings(['a'], 'q', 'user')
     const s = client.search('Standard', {}, 'user')
     await vi.advanceTimersByTimeAsync(29_999)
@@ -413,6 +419,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
   it('un limiter caricato con un blocco in corso ferma tutta la coda', async () => {
     const f = makeFetch(() => json({ result: [] }))
     const client = new TradeClient({
+      requestGapMs: NO_GAP,
       userAgent: UA,
       fetchImpl: f.impl,
       limiters: { data: blocked(20) }
@@ -435,7 +442,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
         ? json({}, 429, { 'Retry-After': '5' })
         : json({ id: tagOf(c), result: [], total: 0 })
     })
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const st = client.search('Standard', { tag: 'stash' }, 'stash')
     await vi.advanceTimersByTimeAsync(10)
     const u = client.search('Standard', { tag: 'user' }, 'user')
@@ -449,7 +456,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
       if (c.init.method === 'GET') return json({ result: [] })
       return n === 1 ? json({}, 429) : json({ id: 'q', result: ['x'], total: 1 })
     })
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const s = client.search('Standard', {}, 'stash')
     await vi.advanceTimersByTimeAsync(10)
     const g = client.fetchListings(['a'], 'q', 'user')
@@ -468,6 +475,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
       return json(emptySearch)
     })
     const client = new TradeClient({
+      requestGapMs: NO_GAP,
       userAgent: UA,
       fetchImpl: f.impl,
       limiters: { search: blocked(3) }
@@ -496,7 +504,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
         'X-Rate-Limit-Ip-State': '1:10:0'
       })
     })
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     await client.search('Standard', { tag: 'first' }, 'user')
     const bg = client.search('Standard', { tag: 'bg' }, 'background')
     const u = client.search('Standard', { tag: 'user' }, 'user')
@@ -512,6 +520,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
       c.init.method === 'POST' ? json(emptySearch) : json({ result: [] })
     )
     const client = new TradeClient({
+      requestGapMs: NO_GAP,
       userAgent: UA,
       fetchImpl: f.impl,
       limiters: { search: saturated(300) }
@@ -535,7 +544,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
       if (c.url.includes('/data/leagues')) return json({ result: [] })
       return c.init.method === 'POST' ? json(emptySearch) : json({ result: [] })
     })
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const ps = [
       client.search('Standard', {}, 'background'),
       client.fetchListings(['a', 'b'], 'q', 'user'),
@@ -552,7 +561,7 @@ describe('scheduler senza blocco in testa (D1)', () => {
 describe('annullamento (signal)', () => {
   it('con il signal già annullato rifiuta con AbortError senza richieste', async () => {
     const f = makeFetch(() => json(emptySearch))
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const ac = new AbortController()
     ac.abort()
     const err = await client.search('Standard', {}, 'user', ac.signal).catch((e) => e)
@@ -568,6 +577,7 @@ describe('annullamento (signal)', () => {
       return c.init.method === 'POST' ? json(emptySearch) : json({ result: [{ id: 'x' }] })
     })
     const client = new TradeClient({
+      requestGapMs: NO_GAP,
       userAgent: UA,
       fetchImpl: f.impl,
       limiters: {
@@ -600,7 +610,7 @@ describe('annullamento (signal)', () => {
       await new Promise((r) => setTimeout(r, 100))
       return json({ id: 'q', result: ['x'], total: 1 })
     })
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const ac = new AbortController()
     const err = client.search('Standard', {}, 'user', ac.signal).catch((e) => e)
     await vi.advanceTimersByTimeAsync(10)
@@ -613,7 +623,7 @@ describe('annullamento (signal)', () => {
 
   it('un job rimesso in coda dopo un 429 viene tolto se annullato', async () => {
     const f = makeFetch(() => json({}, 429, { 'Retry-After': '10' }))
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const ac = new AbortController()
     const err = client.leagues('user', ac.signal).catch((e) => e)
     await vi.advanceTimersByTimeAsync(10)
@@ -635,7 +645,7 @@ describe('budget background (50% di ogni regola)', () => {
         'X-Rate-Limit-Ip': '4:10:60'
       })
     })
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     // 4:10 → background al massimo 2 hit nella finestra, cadenza 2,5 s
     const ps = [
       client.search('Standard', { tag: 'b1' }, 'background'),
@@ -659,7 +669,7 @@ describe('stato dei limiter', () => {
     const f = makeFetch((_c, n) =>
       n === 1 ? json({}, 429, { 'Retry-After': '10' }) : json({ result: [] })
     )
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     expect(client.blockEndedAgoMs()).toBe(Infinity)
     const p = client.fetchListings(['a'], 'q', 'user')
     await vi.advanceTimersByTimeAsync(10)
@@ -678,6 +688,7 @@ describe('stato dei limiter', () => {
     )
     let responses = 0
     const client = new TradeClient({
+      requestGapMs: NO_GAP,
       userAgent: UA,
       fetchImpl: f.impl,
       onResponse: () => responses++
@@ -697,7 +708,7 @@ describe('stato dei limiter', () => {
 describe('job background durante un blocco (pausa della raccolta)', () => {
   it('un 429 su un job background lo rifiuta subito, senza ripetizioni', async () => {
     const f = makeFetch(() => json({}, 429, { 'Retry-After': '60' }))
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const err = client.search('Standard', {}, 'background').catch((e) => e)
     await vi.advanceTimersByTimeAsync(10)
     expect(isTradePausedError(await err)).toBe(true)
@@ -712,7 +723,7 @@ describe('job background durante un blocco (pausa della raccolta)', () => {
       if (n === 1) return json({}, 429, { 'Retry-After': '60' })
       return c.init.method === 'POST' ? json(emptySearch) : json({ result: [] })
     })
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     const u = client.search('Standard', {}, 'user')
     const bg = client.fetchListings(['a', 'b'], 'q', 'background').catch((e) => e)
     const st = client.fetchListings(['c'], 'q', 'stash')
@@ -734,7 +745,7 @@ describe('job background durante un blocco (pausa della raccolta)', () => {
           })
         : json({ result: [] })
     )
-    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const client = new TradeClient({ userAgent: UA, requestGapMs: NO_GAP, fetchImpl: f.impl })
     // la search in volo ha una risposta valida: arriva al chiamante
     const s = client.search('Standard', {}, 'background')
     const queued = client.fetchListings(['x'], 'q', 'background').catch((e) => e)
@@ -746,5 +757,36 @@ describe('job background durante un blocco (pausa della raccolta)', () => {
     expect(isTradePausedError(later)).toBe(true)
     await vi.advanceTimersByTimeAsync(200_000)
     expect(f.calls).toHaveLength(1)
+  })
+})
+
+describe('distanza minima tra richieste (R39)', () => {
+  it('una richiesta user parte almeno 1 s dopo la precedente, anche su un altro endpoint', async () => {
+    const times: number[] = []
+    const f = makeFetch(() => {
+      times.push(Date.now())
+      return json({ id: 'q', total: 0, result: [] })
+    })
+    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const a = client.search('Standard', {}, 'user')
+    const b = client.fetchListings(['x'], 'q', 'user')
+    await vi.advanceTimersByTimeAsync(5_000)
+    await Promise.all([a, b])
+    expect(times).toHaveLength(2)
+    expect(times[1] - times[0]).toBeGreaterThanOrEqual(1000)
+  })
+
+  it('le richieste background aspettano 2 s', async () => {
+    const times: number[] = []
+    const f = makeFetch(() => {
+      times.push(Date.now())
+      return json({ id: 'q', total: 0, result: [] })
+    })
+    const client = new TradeClient({ userAgent: UA, fetchImpl: f.impl })
+    const a = client.search('Standard', {}, 'background')
+    const b = client.search('Standard', {}, 'background')
+    await vi.advanceTimersByTimeAsync(5_000)
+    await Promise.all([a, b])
+    expect(times[1] - times[0]).toBeGreaterThanOrEqual(2000)
   })
 })

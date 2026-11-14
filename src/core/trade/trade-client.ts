@@ -78,6 +78,14 @@ export const isTradePausedError = (e: unknown): boolean =>
 /** Attesa minima dopo un 429 senza Retry-After (il limiter da solo potrebbe non bloccare). */
 const MIN_429_WAIT_MS = 1000
 
+/**
+ * Distanza minima tra due richieste qualsiasi (tutti gli endpoint), in aggiunta alla cadenza di
+ * ogni limiter (R39): il trade ha risposto 429 senza header a richieste ravvicinate (due fetch a
+ * 0,35 s) pur sotto i limiti dichiarati. Le richieste background aspettano il doppio.
+ */
+export const MIN_REQUEST_GAP_MS = 1000
+export const MIN_BACKGROUND_GAP_MS = 2000
+
 const byPriority = (a: Job, b: Job): number =>
   PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority] || a.seq - b.seq
 
@@ -98,6 +106,8 @@ export class TradeClient {
   private readonly limiters: Record<Kind, RateLimiter>
   private queue: Job[] = []
   private inFlight: Job | null = null
+  /** Istante dell'ultima richiesta partita, su qualunque endpoint (distanza minima, R39). */
+  private lastRequestAt = Number.NEGATIVE_INFINITY
   private pumping = false
   private seq = 0
   /** Risveglia il pump in attesa (nuovo job in coda); null se il pump non sta aspettando. */
@@ -105,10 +115,13 @@ export class TradeClient {
   private readonly onRateLimited?: (kind: Kind, attempt: number, headers: string) => void
   private readonly onRestriction?: (kind: Kind, headers: string) => void
   private readonly onResponse?: () => void
+  private readonly gap: { user: number; background: number }
 
   constructor(opts: {
     userAgent: string
     fetchImpl?: typeof fetch
+    /** Distanza minima tra due richieste (default MIN_REQUEST_GAP_MS / MIN_BACKGROUND_GAP_MS). */
+    requestGapMs?: { user: number; background: number }
     limiters?: { search?: RateLimiter; fetch?: RateLimiter; data?: RateLimiter }
     /**
      * Chiamato a ogni risposta 429 (diagnostica: in condizioni normali non deve accadere), con gli
@@ -120,6 +133,10 @@ export class TradeClient {
     /** Chiamato dopo ogni risposta ricevuta, a stato dei limiter aggiornato (salvataggio). */
     onResponse?: () => void
   }) {
+    this.gap = opts.requestGapMs ?? {
+      user: MIN_REQUEST_GAP_MS,
+      background: MIN_BACKGROUND_GAP_MS
+    }
     this.onRateLimited = opts.onRateLimited
     this.onRestriction = opts.onRestriction
     this.onResponse = opts.onResponse
@@ -217,9 +234,15 @@ export class TradeClient {
     }
   }
 
-  /** Attesa del job sul proprio limiter (le richieste background si fermano al 50%). */
+  /**
+   * Attesa del job: il proprio limiter (le richieste background si fermano al 50%) e la distanza
+   * minima dall'ultima richiesta su qualunque endpoint.
+   */
   private delayOf(job: Job): number {
-    return this.limiters[job.kind].delayMs(job.priority === 'background')
+    const background = job.priority === 'background'
+    const gap = background ? this.gap.background : this.gap.user
+    const sinceLast = Math.max(0, Math.ceil(this.lastRequestAt + gap - Date.now()))
+    return Math.max(this.limiters[job.kind].delayMs(background), sinceLast)
   }
 
   private enqueue(
@@ -341,6 +364,7 @@ export class TradeClient {
   private async run(job: Job): Promise<{ retry: true } | { retry: false; value: unknown }> {
     const limiter = this.limiters[job.kind]
     limiter.recordRequest()
+    this.lastRequestAt = Date.now()
     const headers: Record<string, string> = {
       'User-Agent': this.userAgent,
       Accept: 'application/json'

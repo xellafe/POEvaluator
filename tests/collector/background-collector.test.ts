@@ -194,25 +194,25 @@ describe('BackgroundCollector.tick', () => {
     expect(await collector.tick()).toBe('collected')
   })
 
-  it('al massimo una ricerca ogni 60 s (tolleranza 2 s per il jitter del timer)', async () => {
+  it('al massimo una ricerca ogni 3 minuti (tolleranza 2 s per il jitter del timer)', async () => {
     let t = now.getTime()
-    expect(MIN_SEARCH_INTERVAL_MS).toBe(60_000)
+    expect(MIN_SEARCH_INTERVAL_MS).toBe(180_000)
     expect(SEARCH_INTERVAL_TOLERANCE_MS).toBe(2_000)
     const { client, collector } = setup({
       now: () => new Date(t),
       minSearchIntervalMs: MIN_SEARCH_INTERVAL_MS
     })
     expect(await collector.tick()).toBe('collected')
-    t += 30_000
+    t += 60_000
     expect(await collector.tick()).toBe('skipped')
-    t += 27_999
+    t += 117_999
     expect(await collector.tick()).toBe('skipped')
     t += 1
     expect(await collector.tick()).toBe('collected')
     expect(client.searches).toHaveLength(2)
   })
 
-  it('con il timer reale la cadenza resta di una ricerca ogni 60 s, anche se il tick arriva in anticipo', async () => {
+  it('con il timer reale la cadenza resta di una ricerca ogni 3 minuti, anche se il tick arriva in anticipo', async () => {
     vi.useFakeTimers()
     let skew = 0
     const { client, collector } = setup({
@@ -221,10 +221,11 @@ describe('BackgroundCollector.tick', () => {
       minSearchIntervalMs: MIN_SEARCH_INTERVAL_MS
     })
     collector.start(COLLECT_INTERVAL_MS, 0)
-    for (let i = 1; i <= 4; i++) {
+    // tick ogni minuto, ricerca ogni 3 tick
+    for (let i = 1; i <= 9; i++) {
       skew = i % 2 === 0 ? -50 : 50
       await vi.advanceTimersByTimeAsync(COLLECT_INTERVAL_MS)
-      expect(client.searches).toHaveLength(i)
+      expect(client.searches).toHaveLength(Math.ceil(i / 3))
     }
     collector.stop()
   })

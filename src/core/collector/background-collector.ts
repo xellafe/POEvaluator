@@ -13,8 +13,11 @@ const MIN_SEED_WEIGHT = 0.5
 export const MIN_RATIO = 0.6
 /** Intervallo tra i tick della raccolta. */
 export const COLLECT_INTERVAL_MS = 60_000
-/** Al massimo una ricerca della raccolta ogni 60 s, qualunque sia l'intervallo dei tick. */
-export const MIN_SEARCH_INTERVAL_MS = 60_000
+/**
+ * Al massimo una ricerca della raccolta ogni 3 minuti, qualunque sia l'intervallo dei tick (R39:
+ * con una ricerca al minuto il trade ha risposto 429 senza header anche senza analisi in corso).
+ */
+export const MIN_SEARCH_INTERVAL_MS = 3 * 60_000
 /** Tolleranza sul controllo dei 60 s: il timer può arrivare qualche ms prima secondo Date.now(). */
 export const SEARCH_INTERVAL_TOLERANCE_MS = 2_000
 /** Pausa della raccolta oltre la fine di un blocco del trade (429 o restrizione). */
