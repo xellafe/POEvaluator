@@ -14,6 +14,10 @@ export const MIN_NEW_STAT_LISTINGS = 15
 export const MIN_NEW_STAT_WEIGHT = 0.2
 /** Penalità ridge sui coefficienti delle stat (intercetta e item level esclusi). */
 export const RIDGE_LAMBDA = 3
+/** Effetto minimo (a roll pieno) dell'affisso più forte perché i pesi appresi siano usati. */
+export const MIN_LEARNED_EFFECT = 1.2
+/** Quota del peso della tabella sotto cui un affisso della tabella non scende. */
+export const MIN_PRIOR_SHARE = 0.5
 /** Inserzioni con la stat per la fiducia piena nel peso appreso (alpha). */
 const FULL_STAT_LISTINGS = 40
 /** Inserzioni della classe per la fiducia piena nel peso appreso (alpha). */
@@ -94,8 +98,10 @@ function explicitValues(l: Listing): Map<string, number> {
  * - Feature: per le stat in almeno MIN_STAT_LISTINGS inserzioni, x = clamp(|v| / p90, 0, 1.5)
  *   (0 se assente); item level / 100 (centrato) come controllo, non penalizzato.
  * - Ridge su ln(prezzo), λ = RIDGE_LAMBDA, intercetta non penalizzata.
- * - Peso appreso = clamp(beta / ln 10, 0, 1): un roll pieno che decuplica il prezzo vale 1.
- * - Fusione: alpha = min(1, n/40) × min(1, N/200), peso = (1 − alpha)·prior + alpha·appreso.
+ * - Peso appreso = beta / beta massimo della classe × peso massimo della tabella (stessa scala
+ *   della tabella; beta negativi → 0); nessun affisso sopra ×1,2 → pesi della tabella.
+ * - Fusione: alpha = min(1, n/40) × min(1, N/200), peso = (1 − alpha)·prior + alpha·appreso,
+ *   mai sotto metà del prior.
  *   Stat fuori tabella solo con n >= 15 e peso fuso >= 0,2; stat della tabella non stimabili
  *   (meno di 8 inserzioni) col prior.
  */
@@ -160,14 +166,25 @@ export function learnClassWeights(listings: Listing[], prior: Weights): LearnedC
   for (let i = 2; i < k; i++) a[i][i] += RIDGE_LAMBDA
   const beta = solveLinear(a, b)
 
+  // Scala (R40, correzione): i pesi appresi della classe vanno sulla scala della tabella, così le
+  // soglie della deep (gruppo not >= 0,4) restano valide: l'affisso con l'effetto maggiore prende
+  // il peso massimo della tabella, gli altri in proporzione al loro coefficiente. Se nessun
+  // affisso alza il prezzo di almeno MIN_LEARNED_EFFECT, i dati non dicono nulla: pesi = tabella.
+  const maxCoef = Math.max(0, ...stats.map((_, j) => beta[j + 2]))
+  const maxPrior = Math.max(0, ...Object.values(prior))
+  const scale = maxPrior > 0 ? maxPrior : 1
+  const informative = maxCoef >= Math.log(MIN_LEARNED_EFFECT)
+
   const classTrust = Math.min(1, N / FULL_CLASS_LISTINGS)
   const weights: Weights = { ...prior }
   const report: LearnedStat[] = stats.map((s, j) => {
     const coef = beta[j + 2]
-    const learned = clamp(coef / Math.LN10, 0, 1)
-    const alpha = Math.min(1, s.n / FULL_STAT_LISTINGS) * classTrust
     const p = prior[s.id] ?? 0
-    const fused = round3((1 - alpha) * p + alpha * learned)
+    const learned = informative ? clamp((Math.max(0, coef) / maxCoef) * scale, 0, 1) : p
+    const alpha = Math.min(1, s.n / FULL_STAT_LISTINGS) * classTrust
+    // minimo: un affisso della tabella non scende sotto metà del suo peso (distorsioni note:
+    // affissi quasi universali o tipici degli oggetti da livellamento)
+    const fused = round3(Math.max((1 - alpha) * p + alpha * learned, p * MIN_PRIOR_SHARE))
     if (s.id in prior) weights[s.id] = fused
     else if (s.n >= MIN_NEW_STAT_LISTINGS && fused >= MIN_NEW_STAT_WEIGHT) weights[s.id] = fused
     return {

@@ -95,10 +95,11 @@ describe('solveLinear', () => {
 })
 
 describe('learnClassWeights', () => {
-  it('una stat che raddoppia il prezzo a roll pieno → peso appreso ≈ ln2/ln10', () => {
-    const res = learnClassWeights(synthetic(400), {})!
+  it('la stat con l effetto maggiore prende il peso massimo della tabella (stessa scala)', () => {
+    const res = learnClassWeights(synthetic(400), { [UP]: 0.3, [NOISE]: 0.8 })!
     const up = res.report.find((r) => r.statId === UP)!
-    expect(up.learned).toBeCloseTo(Math.log(2) / Math.log(10), 1)
+    // UP raddoppia il prezzo ed è l'effetto più forte: peso appreso = massimo della tabella (0,8)
+    expect(up.learned).toBeCloseTo(0.8, 2)
     expect(up.effect).toBeGreaterThan(1.8)
     expect(up.effect).toBeLessThan(2.1)
     expect(up.alpha).toBe(1)
@@ -109,8 +110,16 @@ describe('learnClassWeights', () => {
     const down = res.report.find((r) => r.statId === DOWN)!
     expect(down.learned).toBe(0)
     expect(down.effect).toBeLessThan(0.6)
-    // alpha 1 (n e N alti): il peso fuso è quello appreso
-    expect(res.weights[DOWN]).toBe(0)
+    // alpha 1 (n e N alti): il peso appreso è 0, ma un affisso della tabella non scende sotto
+    // metà del suo peso
+    expect(res.weights[DOWN]).toBe(0.3)
+  })
+
+  it('nessun affisso alza il prezzo di almeno ×1,2: restano i pesi della tabella', () => {
+    const flat = synthetic(400).map((l) => ({ ...l, priceExalted: 10 }))
+    const res = learnClassWeights(flat, { [UP]: 0.7, [DOWN]: 0.4 })!
+    expect(res.weights[UP]).toBe(0.7)
+    expect(res.weights[DOWN]).toBe(0.4)
   })
 
   it('con poche inserzioni (alpha piccolo) il peso resta vicino al prior', () => {
