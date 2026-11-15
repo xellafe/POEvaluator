@@ -20,12 +20,18 @@ interface ListingRow {
   seenAt: string
 }
 
+const toListing = (r: ListingRow): Listing => ({
+  ...r,
+  mods: JSON.parse(r.mods) as Listing['mods']
+})
+
 /** Archivio locale delle inserzioni trade e dei tassi di cambio (SQLite via node:sqlite). */
 export class ListingStore {
   private readonly db: DatabaseSync
   private readonly upsertStmt: StatementSync
   private readonly comparablesStmt: StatementSync
   private readonly countStmt: StatementSync
+  private readonly leagueStmt: StatementSync
   private readonly saveRatesStmt: StatementSync
   private readonly latestRatesStmt: StatementSync
 
@@ -72,6 +78,7 @@ export class ListingStore {
     this.countStmt = this.db.prepare(
       `SELECT itemClass, COUNT(*) AS n FROM listings WHERE league = ? GROUP BY itemClass`
     )
+    this.leagueStmt = this.db.prepare(`SELECT * FROM listings WHERE league = ?`)
     this.saveRatesStmt = this.db.prepare(`
       INSERT INTO rates (league, fetchedAt, exaltedPer) VALUES (?, ?, ?)
       ON CONFLICT(league) DO UPDATE SET fetchedAt = excluded.fetchedAt, exaltedPer = excluded.exaltedPer
@@ -113,7 +120,13 @@ export class ListingStore {
   comparables(f: { league: string; itemClass: string; maxAgeDays: number; now: Date }): Listing[] {
     const cutoff = new Date(f.now.getTime() - f.maxAgeDays * 86_400_000).toISOString()
     const rows = this.comparablesStmt.all(f.league, f.itemClass, cutoff) as unknown as ListingRow[]
-    return rows.map((r) => ({ ...r, mods: JSON.parse(r.mods) as Listing['mods'] }))
+    return rows.map(toListing)
+  }
+
+  /** Tutte le inserzioni della league, di ogni classe e senza limite di età (pesi appresi, R40). */
+  listingsOfLeague(league: string): Listing[] {
+    const rows = this.leagueStmt.all(league) as unknown as ListingRow[]
+    return rows.map(toListing)
   }
 
   countByClass(league: string): Record<string, number> {

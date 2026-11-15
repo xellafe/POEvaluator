@@ -1,4 +1,5 @@
 import { app, ipcMain, type Tray } from 'electron'
+import { writeFileSync } from 'node:fs'
 import { join } from 'path'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { UiohookKey, uIOhook } from 'uiohook-napi'
@@ -19,10 +20,12 @@ import { fetchRates } from '../core/pricing/currency'
 import type { Settings } from '../core/settings'
 import { TradeClient } from '../core/trade/trade-client'
 import { DEFAULT_MAX_SEARCHES } from '../core/valuation/deep-analysis'
+import { setLearnedWeights } from '../core/valuation/weights'
 import { copyHoveredItem } from './capture'
 import { EvaluatorService, type EvalResult } from './evaluator-service'
 import { KeyRepeatFilter, matchesHotkey, parseHotkey, type Hotkey } from './input'
 import { LeagueCache } from './league-cache'
+import { LearnedWeightsJob } from './learned-weights-job'
 import { loadRateLimiters, RateLimitFile } from './rate-limit-file'
 import { createTray, openSettingsWindow, Overlay, sendToSettings } from './overlay'
 import { DEEP_BUSY_MESSAGE, RequestGate } from './request-gate'
@@ -44,6 +47,8 @@ let settingsPath: string
 let store: ListingStore | null = null
 let service: EvaluatorService | null = null
 let collector: BackgroundCollector | null = null
+/** Pesi appresi dall'archivio della league corrente (R40), ricalcolati ogni 6 ore. */
+let learnedJob: LearnedWeightsJob | null = null
 /** League salvate in userData/leagues.json, aggiornate dal trade ogni 24 ore. */
 let leagueCache: LeagueCache | null = null
 /** Stato dei rate limiter in userData/rate-limits.json (debounce dopo ogni risposta, e alla chiusura). */
@@ -263,7 +268,10 @@ function registerIpc(): void {
     ) {
       registerHotkeys()
     }
-    if (prev.league !== settings.league) void service?.reloadRates()
+    if (prev.league !== settings.league) {
+      void service?.reloadRates()
+      learnedJob?.leagueChanged()
+    }
     return settings
   })
   // Subito l'elenco salvato; se vecchio o assente si aggiorna in background (onLeagues).
@@ -293,6 +301,16 @@ async function startServices(): Promise<void> {
   const dbPath = join(userData, 'poevaluator.db')
   store = new ListingStore(dbPath)
   log(`database aperto: ${dbPath}`)
+  const learnedPath = join(userData, 'learned-weights.json')
+  learnedJob = new LearnedWeightsJob({
+    store,
+    league: () => settings.league,
+    install: setLearnedWeights,
+    writeReport: (json) => writeFileSync(learnedPath, json, 'utf8'),
+    now: () => new Date(),
+    log
+  })
+  learnedJob.start()
 
   const userAgent = `POEvaluator/${app.getVersion()} (+https://github.com/xellafe/POEvaluator)`
   // finestre, regole e restrizioni della sessione precedente: le prime richieste non sforano (H1)
@@ -361,6 +379,7 @@ function shutdown(): void {
     log(`arresto hook: ${errMsg(e)}`)
   }
   collector?.stop()
+  learnedJob?.stop()
   if (statsTimer) clearInterval(statsTimer)
   service?.stop()
   rateLimitFile?.flush()

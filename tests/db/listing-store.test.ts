@@ -114,4 +114,15 @@ describe('ListingStore', () => {
     expect(store.latestRates('Standard')).toEqual(r2)
     expect(store.latestRates('Hardcore')?.exaltedPer).toEqual({ exalted: 1 })
   })
+
+  it('listingsOfLeague restituisce tutte le classi della league, senza limite di età', () => {
+    store.upsert([
+      listing({ id: 'a', indexedAt: '2020-01-01T00:00:00.000Z' }),
+      listing({ id: 'b', itemClass: 'armour.gloves' }),
+      listing({ id: 'c', league: 'Hardcore' })
+    ])
+    const res = store.listingsOfLeague('Standard')
+    expect(res.map((l) => l.id).sort()).toEqual(['a', 'b'])
+    expect(res.find((l) => l.id === 'a')?.mods).toEqual([{ statId: 'explicit.stat_1', value: 30 }])
+  })
 })

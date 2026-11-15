@@ -12,11 +12,27 @@ export const DEFAULT_WEIGHTS: Readonly<Record<string, Weights>> = Object.fromEnt
   )
 )
 
-/** Pesi della classe trade, o undefined se la classe non è nella tabella. */
+const has = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k)
+
+/**
+ * Pesi appresi dall'archivio (R40), per classe; null = solo tabella. Li installa il main process
+ * (setLearnedWeights) e valgono solo lì: il renderer importa questo modulo ma vede la tabella, il
+ * che va bene perché lo stato definitivo degli affissi arriva dal core nel risultato della deep.
+ */
+let learnedWeights: Readonly<Record<string, Weights>> | null = null
+
+/** Installa (o con null toglie) i pesi appresi per classe. */
+export function setLearnedWeights(map: Readonly<Record<string, Weights>> | null): void {
+  learnedWeights = map
+}
+
+/**
+ * Pesi della classe trade: quelli appresi se installati per la classe, altrimenti la tabella;
+ * undefined se la classe non ha né gli uni né l'altra.
+ */
 export function weightsFor(itemClass: string): Weights | undefined {
-  return Object.prototype.hasOwnProperty.call(DEFAULT_WEIGHTS, itemClass)
-    ? DEFAULT_WEIGHTS[itemClass]
-    : undefined
+  if (learnedWeights && has(learnedWeights, itemClass)) return learnedWeights[itemClass]
+  return has(DEFAULT_WEIGHTS, itemClass) ? DEFAULT_WEIGHTS[itemClass] : undefined
 }
 
 /** Mod con quanto serve a pesarlo (sottoinsieme di ItemMod, usabile anche dal renderer). */
