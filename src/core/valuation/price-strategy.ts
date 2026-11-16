@@ -111,7 +111,6 @@ const MIN_LOG_IQR = Math.log(1.1)
  * scala log il criterio è sui rapporti. Con IQR sotto ln(1.1) (prezzi quasi tutti uguali) non
  * scarta nulla: i limiti sarebbero così stretti da togliere prezzi normali. Con 3 prezzi i
  * quartili non hanno senso: nessuna pulizia. Restituisce i prezzi ordinati.
- * Limite noto: con pochi prezzi il p10 dipende quasi solo dal più basso (vedi test).
  */
 
 export function cleanParityPrices(pricesExalted: number[]): number[] {
@@ -136,6 +135,15 @@ export function cleanParityPrices(pricesExalted: number[]): number[] {
 const PARITY_HIGH_COUNT = 15
 const PARITY_MEDIUM_COUNT = 6
 
+/**
+ * "Vende subito" dei prezzi puliti e ordinati (R41): il 10° percentile; sotto PARITY_MEDIUM_COUNT
+ * prezzi il più basso, perché con pochi prezzi distanti il percentile interpolato cade fra due
+ * inserzioni (es. 168 ex fra 5 e 548) e non corrisponde a nessun oggetto in vendita.
+ */
+export function parityP10(sorted: number[]): number {
+  return sorted.length < PARITY_MEDIUM_COUNT ? sorted[0] : percentile(sorted, 0.1)
+}
+
 /** Prezzi massimi del campione per la barra della distribuzione del pannello. */
 const CHART_SAMPLE = 20
 
@@ -152,7 +160,7 @@ export function sampleForChart(sorted: number[]): number[] {
 /**
  * Prezzo dell'analisi approfondita sul confronto "alla pari" (R31, R32): prezzo consigliato al
  * 10° percentile dei prezzi puliti (cleanParityPrices), cioè tra i più economici, il prezzo che
- * vende subito; min al 5°, max al 50°. Il verdetto viene dal prezzo consigliato (non dalla
+ * vende subito (sotto 6 prezzi il più basso, R41: `parityP10`); min al 5°, max al 50°. Il verdetto viene dal prezzo consigliato (non dalla
  * mediana: le richieste del trade sono gonfiate rispetto alle vendite). R34: sempre anche
  * `patient` (25°, "Se puoi aspettare"), `typical` (mediana, "Richiesta tipica") e `sample`
  * (prezzi per la barra della distribuzione).
@@ -169,7 +177,7 @@ export function parityPriceFor(
   if (clean.length < MIN_PARITY_PRICES) {
     return { verdict: null, confidence: 'bassa', comparablesCount: clean.length, warnings: [] }
   }
-  const suggested = roundPrice(percentile(clean, 0.1))
+  const suggested = roundPrice(parityP10(clean))
   const verdict = verdictFor(suggested, t)
   const confidence: Confidence =
     clean.length >= PARITY_HIGH_COUNT && opts.fullMatch

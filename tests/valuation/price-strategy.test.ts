@@ -4,6 +4,7 @@ import {
   cleanParityPrices,
   cleanPrices,
   confidenceFor,
+  parityP10,
   parityPriceFor,
   percentile,
   priceFor,
@@ -266,11 +267,12 @@ describe('parityPriceFor (analisi approfondita, confronto alla pari)', () => {
     expect(r.price?.suggested).toBe(14)
   })
 
-  it('limite noto (R33): con pochi prezzi un solo prezzo basso trascina il consigliato', () => {
+  it('limite noto (R33, R41): con pochi prezzi decide il più basso', () => {
     const r = parityPriceFor([1, 100, 110, 120, 130], T, { fullMatch: true })
     expect(r.comparablesCount).toBe(5)
-    // p10 R-7 = 1 + 0.4 · 99 = 40.6 -> Ottimo invece di ~100
-    expect(r.price?.suggested).toBe(41)
+    // sotto 6 prezzi il consigliato è il minimo (R41): 1 -> Pessimo, con i prezzi trovati
+    expect(r.verdict).toBe('pessimo')
+    expect(r.found).toEqual([1, 100, 110, 120, 130])
     expect(r.confidence).not.toBe('alta')
   })
 
@@ -322,5 +324,19 @@ describe('cleanParityPrices: prezzi oltre 50 volte la mediana (R39)', () => {
 
   it('una distribuzione larga ma credibile resta intera', () => {
     expect(cleanParityPrices([30, 640, 6400])).toEqual([30, 640, 6400])
+  })
+})
+
+describe('prezzo consigliato con pochi prezzi (R41)', () => {
+  it('sotto 6 prezzi: il più basso, non il p10 interpolato', () => {
+    // caso reale: p10 interpolato fra 5 e 548 darebbe 168 (Ottimo) senza nessun oggetto a quel prezzo
+    const r = parityPriceFor([5, 548.2, 548.2, 2741], T, { fullMatch: false })
+    expect(r.price?.suggested).toBe(5)
+    expect(r.verdict).toBe(verdictFor(5, T))
+    expect(parityP10([5, 548.2, 548.2, 2741])).toBe(5)
+  })
+
+  it('da 6 prezzi in su: p10 interpolato come prima', () => {
+    expect(parityP10([10, 11, 12, 13, 14, 15])).toBeCloseTo(10.5)
   })
 })

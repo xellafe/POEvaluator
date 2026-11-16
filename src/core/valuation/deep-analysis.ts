@@ -11,8 +11,8 @@ export { isAttackWeapon, LOCAL_DAMAGE_STATS } from './mod-status'
 import {
   cleanParityPrices,
   MIN_PARITY_PRICES,
+  parityP10,
   parityPriceFor,
-  percentile,
   roundPrice,
   sampleForChart
 } from './price-strategy'
@@ -213,7 +213,7 @@ function sampleP10(prices: number[]): number | null {
     Number.POSITIVE_INFINITY
   )
   const clean = cleanParityPrices(sample)
-  return clean.length >= MIN_PARITY_PRICES ? percentile(clean, 0.1) : null
+  return clean.length >= MIN_PARITY_PRICES ? parityP10(clean) : null
 }
 
 /**
@@ -364,9 +364,7 @@ export async function deepAnalysis(
         const clean = cleanParityPrices(await fetchPrices(r, CEILING_FETCH)).sort((a, b) => a - b)
         if (clean.length === 0) continue
         result.ceiling = {
-          exalted: roundPrice(
-            clean.length >= MIN_PARITY_PRICES ? percentile(clean, 0.1) : clean[0]
-          ),
+          exalted: roundPrice(parityP10(clean)),
           count: clean.length,
           sample: sampleForChart(clean),
           tradeUrl: tradeUrl(settings.league, r.id)
