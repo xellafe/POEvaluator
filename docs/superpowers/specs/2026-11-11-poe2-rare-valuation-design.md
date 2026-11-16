@@ -96,6 +96,9 @@ L'obiettivo è uno strumento che **ragioni come un giocatore esperto**: guarda l
 - **Se in futuro esiste un'API OAuth ufficiale** per le stash PoE2 (`account:stashes`), va preferita.
 - **Ripiego (deciso dall'utente)**: *coda tramite appunti*. L'utente fa Ctrl+C su ogni oggetto della tab, lo strumento accoda e valuta in background. In questo caso l'overlay sulla griglia non è disponibile (manca la posizione); si mostra una lista.
 - **Primo passo di sviluppo**: uno spike che verifica se l'endpoint risponde per PoE2. Il risultato decide quale ramo costruire.
+- **Esito dello spike (2026-11-16): negativo.** Con un `POESESSID` valido, `character-window/get-characters?realm=poe2` restituisce solo personaggi di realm `pc` (il parametro è ignorato) e `get-stash-items?realm=poe2` risponde 400 `Invalid query`. pathofexile2.com è un'applicazione web: le sue chiamate (`internal-api/my-account/...`) coprono personaggi, shop e notifiche, nessuna la stash. La documentazione GGG indica ancora "Account Stashes (PoE1 only)".
+- **Alternative viste in altri tool PoE2**: (a) ricerca sul trade filtrata per account, che restituisce nome della tab e `x`/`y` (`listing.stash`) ma solo per gli oggetti già in vendita; (b) lettura dello schermo, limitata alle tab speciali ed esclusa da §3. (c) Per il ripiego tramite appunti, la posizione del cursore al momento dell'hotkey più la calibrazione della griglia permetterebbe comunque l'overlay sulle celle.
+- **Decisione (2026-11-16)**: M2 è rinviata all'uscita di PoE2 1.0, per vedere se GGG pubblica un'API stash per PoE2 prima di costruire il ripiego.
 - **Scelta della tab (decisa dall'utente)**: l'utente sceglie nell'app quale tab valutare e mostrare in overlay (lista delle tab per nome) oppure le cicla con una hotkey. L'app non tenta di capire da sola quale tab è aperta in gioco. L'overlay della griglia si mostra con una hotkey o un toggle, sulla tab selezionata.
 
 ### 6.5 Flussi principali
@@ -107,7 +110,7 @@ L'obiettivo è uno strumento che **ragioni come un giocatore esperto**: guarda l
 ### 6.6 Milestone (mia proposta)
 
 1. **M1: valutazione del singolo oggetto.** Parser, coda API, database, normalizzazione prezzi, raccolta in background, verdetto rapido, analisi approfondita, pannello oggetto, impostazioni minime. Prima della UI si approvano i mockup.
-2. **M2: stash.** Spike sull'endpoint PoE2 → lettura della tab selezionata + overlay sulla griglia con calibrazione. Se lo spike fallisce: coda tramite appunti con vista a lista. Il ripiego fa comunque parte della v1.
+2. **M2: stash.** Spike sull'endpoint PoE2 → lettura della tab selezionata + overlay sulla griglia con calibrazione. Se lo spike fallisce: coda tramite appunti con vista a lista. Il ripiego fa comunque parte della v1. *Spike fallito il 2026-11-16, milestone rinviata all'uscita di PoE2 1.0 (vedi §6.4).*
 3. **M3: storico e rifiniture.** Storico delle valutazioni, tuning delle soglie, prestazioni dell'overlay.
 
 ## 7. Criteri di successo
